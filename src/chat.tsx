@@ -2,14 +2,22 @@
  * Chat with Agent Command
  *
  * Main chat interface for talking to your active Letta agent.
- * Shows the agent's response and optionally reasoning/tool usage.
+ * Shows conversation history and agent responses with optional reasoning.
  */
 
-import { Action, ActionPanel, Detail, Form, showToast, Toast, useNavigation } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  Form,
+  showToast,
+  Toast,
+  useNavigation,
+  Icon,
+  Color,
+} from "@raycast/api";
 import { useState, useEffect } from "react";
 import { useLettaClient, useAgents, useChat } from "./hooks";
-// Note: These imports create a circular dependency with agents.tsx
-// This is handled okay by the JS module system but could be refactored
 import AgentsCommand from "./agents";
 import CreateAgentCommand from "./create-agent";
 import MemoryCommand from "./memory";
@@ -17,7 +25,10 @@ import MemoryCommand from "./memory";
 export default function ChatCommand() {
   const { client, showReasoning } = useLettaClient();
   const { activeAgent, agents, isLoading: agentsLoading } = useAgents(client);
-  const { isLoading, answer, reasoning, toolCalls, error, send } = useChat(client, activeAgent?.id);
+  const { isLoading, messages, answer, reasoning, toolCalls, error, send, reset } = useChat(
+    client,
+    activeAgent?.id
+  );
 
   // Show warning if no active agent but agents exist
   useEffect(() => {
@@ -30,7 +41,7 @@ export default function ChatCommand() {
     }
   }, [agentsLoading, activeAgent, agents]);
 
-  // Build markdown content
+  // Build markdown content with conversation history
   const markdownParts: string[] = [];
 
   if (activeAgent) {
@@ -41,12 +52,38 @@ export default function ChatCommand() {
     markdownParts.push(`> ⚠️ **Error:** ${error}\n`);
   }
 
-  if (answer) {
-    markdownParts.push(answer);
-  } else if (!isLoading) {
+  // Show conversation history
+  if (messages.length > 0) {
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        markdownParts.push(`## You\n\n${msg.content}\n`);
+      } else if (msg.role === "assistant") {
+        markdownParts.push(`## Agent\n\n${msg.content}\n`);
+      }
+    }
+  }
+
+  // Show current streaming answer if different from last message
+  if (isLoading && answer && messages.length > 0) {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role === "assistant" && answer !== lastMessage.content) {
+      // Update the last assistant message section
+      const lastIndex = markdownParts.length - 1;
+      if (lastIndex >= 0 && markdownParts[lastIndex].startsWith("## Agent")) {
+        markdownParts[lastIndex] = `## Agent\n\n${answer}\n\n_Thinking..._`;
+      }
+    } else if (lastMessage.role === "user") {
+      // New response starting
+      markdownParts.push(`## Agent\n\n${answer}\n\n_Thinking..._`);
+    }
+  } else if (isLoading && answer) {
+    // First message
+    markdownParts.push(`## Agent\n\n${answer}\n\n_Thinking..._`);
+  } else if (!isLoading && messages.length === 0) {
     markdownParts.push("_Ask your Letta agent something to get started._");
   }
 
+  // Add reasoning and tool calls if enabled
   if (showReasoning && reasoning) {
     markdownParts.push("\n---\n\n### 🧠 Agent Reasoning\n\n" + reasoning);
   }
@@ -91,6 +128,7 @@ Please select an agent to chat with.
       actions={
         <ActionPanel>
           <Action.Push
+            icon={Icon.Message}
             title="Ask Question"
             shortcut={{ modifiers: [], key: "return" }}
             target={
@@ -102,9 +140,40 @@ Please select an agent to chat with.
               />
             }
           />
-          {answer && <Action.CopyToClipboard title="Copy Answer" content={answer} />}
-          <Action.Push title="Manage Agents" target={<AgentsCommand />} />
-          <Action.Push title="View Memory" target={<MemoryCommand />} />
+          {answer && (
+            <Action.CopyToClipboard
+              icon={Icon.Clipboard}
+              title="Copy Last Response"
+              content={answer}
+              shortcut={{ modifiers: ["cmd"], key: "c" }}
+            />
+          )}
+          {messages.length > 0 && (
+            <Action
+              icon={Icon.Trash}
+              title="Clear Conversation"
+              shortcut={{ modifiers: ["cmd"], key: "k" }}
+              onAction={() => {
+                reset();
+                showToast({
+                  style: Toast.Style.Success,
+                  title: "Conversation cleared",
+                });
+              }}
+            />
+          )}
+          <Action.Push
+            icon={Icon.Person}
+            title="Manage Agents"
+            target={<AgentsCommand />}
+            shortcut={{ modifiers: ["cmd"], key: "a" }}
+          />
+          <Action.Push
+            icon={Icon.Book}
+            title="View Memory"
+            target={<MemoryCommand />}
+            shortcut={{ modifiers: ["cmd"], key: "m" }}
+          />
         </ActionPanel>
       }
       metadata={
@@ -114,6 +183,11 @@ Please select an agent to chat with.
             {activeAgent.description && (
               <Detail.Metadata.Label title="Description" text={activeAgent.description} />
             )}
+            <Detail.Metadata.Separator />
+            <Detail.Metadata.Label
+              title="Messages"
+              text={`${messages.filter((m) => m.role === "user").length} sent`}
+            />
           </Detail.Metadata>
         ) : undefined
       }
@@ -122,7 +196,7 @@ Please select an agent to chat with.
 }
 
 /**
- * Prompt input form
+ * Prompt input form - improved with better UX
  */
 function PromptForm(props: { agentName: string; onSubmit: (value: string) => void }) {
   const [value, setValue] = useState("");
@@ -134,7 +208,9 @@ function PromptForm(props: { agentName: string; onSubmit: (value: string) => voi
       actions={
         <ActionPanel>
           <Action.SubmitForm
+            icon={Icon.Message}
             title="Send Message"
+            shortcut={{ modifiers: [], key: "return" }}
             onSubmit={() => {
               if (value.trim()) {
                 props.onSubmit(value.trim());
@@ -148,10 +224,14 @@ function PromptForm(props: { agentName: string; onSubmit: (value: string) => voi
       <Form.TextArea
         id="prompt"
         title="Message"
-        placeholder="Ask your Letta agent…"
+        placeholder="Ask your Letta agent anything…"
         value={value}
         onChange={setValue}
         autoFocus
+      />
+      <Form.Description
+        title="Tip"
+        text="Press Enter to send. The agent will remember this conversation."
       />
     </Form>
   );
