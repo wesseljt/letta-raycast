@@ -18,17 +18,20 @@ type MemoryBlock = {
 interface MemoryCommandProps {
   agentId: string;
   agentName: string;
+  accountId?: string; // Optional - defaults to project1 for backwards compatibility
 }
 
-export default function MemoryCommand({ agentId, agentName }: MemoryCommandProps) {
-  const { client } = useLettaClient();
+export default function MemoryCommand({ agentId, agentName, accountId = "project1" }: MemoryCommandProps) {
+  const { getClientForAccount } = useLettaClient();
+  const client = getClientForAccount(accountId);
+
   const [blocks, setBlocks] = useState<MemoryBlock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const fetchMemory = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId || !client) return;
 
     setIsLoading(true);
     setError(null);
@@ -92,6 +95,22 @@ export default function MemoryCommand({ agentId, agentName }: MemoryCommandProps
   const handleRetry = useCallback(() => {
     setRefreshKey((k) => k + 1);
   }, []);
+
+  // No client error state
+  if (!client) {
+    return (
+      <Detail
+        markdown={`# Error Loading Memory
+
+No client found for account. Please check your configuration.`}
+        actions={
+          <ActionPanel>
+            <Action icon={Icon.ArrowClockwise} title="Retry" onAction={handleRetry} />
+          </ActionPanel>
+        }
+      />
+    );
+  }
 
   // Error state
   if (error) {
@@ -173,13 +192,7 @@ Try refreshing.`}
  * Detail view for a single memory block
  * Displays the block content that was already fetched
  */
-function MemoryBlockDetail({
-  block,
-  agentName,
-}: {
-  block: MemoryBlock;
-  agentName: string;
-}) {
+function MemoryBlockDetail({ block, agentName }: { block: MemoryBlock; agentName: string }) {
   const markdown = `# ${block.label}
 
 \`\`\`
@@ -224,4 +237,3 @@ function getBlockColor(label: string): Color {
   };
   return colors[label.toLowerCase()] ?? Color.SecondaryText;
 }
-

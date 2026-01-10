@@ -7,7 +7,7 @@
 
 import { LocalStorage } from "@raycast/api";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type { Conversation, Message, ConversationSummary, AgentWithColor } from "../types";
+import type { Conversation, Message, ConversationSummary, AgentWithAccount } from "../types";
 import { createConversationSummary, generateConversationTitle } from "../types";
 
 /** Generate a unique ID */
@@ -33,7 +33,7 @@ interface UseConversationsReturn {
   /** Set agent filter ("all" or agent ID) */
   setAgentFilter: (filter: string) => void;
   /** Start a new conversation with an agent */
-  startConversation: (agent: AgentWithColor) => Conversation;
+  startConversation: (agent: AgentWithAccount) => Conversation;
   /** Add a message to a conversation */
   addMessage: (conversationId: string, message: Omit<Message, "id">) => void;
   /** Update the last message (for streaming) */
@@ -48,7 +48,8 @@ interface UseConversationsReturn {
   getConversation: (conversationId: string) => Conversation | undefined;
 }
 
-export function useConversations(agents: AgentWithColor[] = []): UseConversationsReturn {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function useConversations(_agents: AgentWithAccount[] = []): UseConversationsReturn {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -61,9 +62,12 @@ export function useConversations(agents: AgentWithColor[] = []): UseConversation
         const stored = await LocalStorage.getItem<string>(STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored) as Conversation[];
-          // Restore Date objects
+          // Restore Date objects and migrate old conversations
           const restored = parsed.map((conv) => ({
             ...conv,
+            // Migrate old conversations without account info
+            accountId: conv.accountId || "project1",
+            accountName: conv.accountName || "Default",
             createdAt: new Date(conv.createdAt),
             updatedAt: new Date(conv.updatedAt),
             messages: conv.messages.map((m) => ({
@@ -112,12 +116,14 @@ export function useConversations(agents: AgentWithColor[] = []): UseConversation
 
   // Start a new conversation
   const startConversation = useCallback(
-    (agent: AgentWithColor): Conversation => {
+    (agent: AgentWithAccount): Conversation => {
       const newConversation: Conversation = {
         id: generateId(),
         agentId: agent.id,
         agentName: agent.name,
         agentColor: agent.color,
+        accountId: agent.accountId,
+        accountName: agent.accountName,
         messages: [],
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -163,36 +169,33 @@ export function useConversations(agents: AgentWithColor[] = []): UseConversation
   );
 
   // Update the last message (for streaming responses)
-  const updateLastMessage = useCallback(
-    (conversationId: string, content: string, reasoning?: string) => {
-      setConversations((prev) => {
-        const updated = prev.map((conv) => {
-          if (conv.id !== conversationId) return conv;
-          if (conv.messages.length === 0) return conv;
+  const updateLastMessage = useCallback((conversationId: string, content: string, reasoning?: string) => {
+    setConversations((prev) => {
+      const updated = prev.map((conv) => {
+        if (conv.id !== conversationId) return conv;
+        if (conv.messages.length === 0) return conv;
 
-          const messages = [...conv.messages];
-          const lastMessage = messages[messages.length - 1];
+        const messages = [...conv.messages];
+        const lastMessage = messages[messages.length - 1];
 
-          if (lastMessage.role === "assistant") {
-            messages[messages.length - 1] = {
-              ...lastMessage,
-              content,
-              reasoning,
-            };
-          }
-
-          return {
-            ...conv,
-            messages,
-            updatedAt: new Date(),
+        if (lastMessage.role === "assistant") {
+          messages[messages.length - 1] = {
+            ...lastMessage,
+            content,
+            reasoning,
           };
-        });
-        // Don't save during streaming - only on complete
-        return updated;
+        }
+
+        return {
+          ...conv,
+          messages,
+          updatedAt: new Date(),
+        };
       });
-    },
-    []
-  );
+      // Don't save during streaming - only on complete
+      return updated;
+    });
+  }, []);
 
   // Set active conversation
   const setActiveConversation = useCallback((conversationId: string | null) => {

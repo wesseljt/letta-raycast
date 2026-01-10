@@ -27,16 +27,108 @@
     ],
     "preferences": [
         {
-            "name": "apiKey",
-            "title": "Letta API Key",
-            "description": "Get from the Letta dashboard (Cloud or local)",
+            "name": "project1Name",
+            "title": "Project 1 Name",
+            "description": "Name for your first Letta project (e.g., 'Work', 'Personal')",
+            "type": "textfield",
+            "required": true,
+            "default": "Default"
+        },
+        {
+            "name": "project1ApiKey",
+            "title": "Project 1 API Key",
+            "description": "API key for Project 1 - get from Letta dashboard",
             "type": "password",
             "required": true
         },
         {
-            "name": "baseUrl",
-            "title": "Custom Letta Base URL",
-            "description": "Optional. Use for self-hosted Letta, e.g. http://localhost:8283",
+            "name": "project1BaseUrl",
+            "title": "Project 1 Base URL",
+            "description": "Optional. Custom URL for self-hosted Letta (e.g., http://localhost:8283)",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project2Name",
+            "title": "Project 2 Name",
+            "description": "Name for your second Letta project",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project2ApiKey",
+            "title": "Project 2 API Key",
+            "description": "API key for Project 2",
+            "type": "password",
+            "required": false
+        },
+        {
+            "name": "project2BaseUrl",
+            "title": "Project 2 Base URL",
+            "description": "Optional custom URL for Project 2",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project3Name",
+            "title": "Project 3 Name",
+            "description": "Name for your third Letta project",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project3ApiKey",
+            "title": "Project 3 API Key",
+            "description": "API key for Project 3",
+            "type": "password",
+            "required": false
+        },
+        {
+            "name": "project3BaseUrl",
+            "title": "Project 3 Base URL",
+            "description": "Optional custom URL for Project 3",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project4Name",
+            "title": "Project 4 Name",
+            "description": "Name for your fourth Letta project",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project4ApiKey",
+            "title": "Project 4 API Key",
+            "description": "API key for Project 4",
+            "type": "password",
+            "required": false
+        },
+        {
+            "name": "project4BaseUrl",
+            "title": "Project 4 Base URL",
+            "description": "Optional custom URL for Project 4",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project5Name",
+            "title": "Project 5 Name",
+            "description": "Name for your fifth Letta project",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "project5ApiKey",
+            "title": "Project 5 API Key",
+            "description": "API key for Project 5",
+            "type": "password",
+            "required": false
+        },
+        {
+            "name": "project5BaseUrl",
+            "title": "Project 5 Base URL",
+            "description": "Optional custom URL for Project 5",
             "type": "textfield",
             "required": false
         },

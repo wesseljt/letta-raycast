@@ -5,6 +5,28 @@
 import { Color } from "@raycast/api";
 
 /**
+ * A configured Letta account (project)
+ */
+export interface LettaAccount {
+  id: string; // e.g., "project1", "project2"
+  name: string; // User-defined project name
+  apiKey: string;
+  baseUrl?: string;
+}
+
+/**
+ * Agent with account information for multi-account support
+ */
+export interface AgentWithAccount {
+  id: string;
+  name: string;
+  description?: string | null;
+  color: Color;
+  accountId: string; // Which account this agent belongs to
+  accountName: string; // Project name for display
+}
+
+/**
  * A single message in a conversation
  */
 export interface Message {
@@ -33,6 +55,8 @@ export interface Conversation {
   agentId: string;
   agentName: string;
   agentColor: Color;
+  accountId: string; // Which account this agent belongs to
+  accountName: string; // Project name for display
   messages: Message[];
   title?: string; // Auto-generated from first message
   createdAt: Date;
@@ -47,6 +71,8 @@ export interface ConversationSummary {
   agentId: string;
   agentName: string;
   agentColor: Color;
+  accountId: string;
+  accountName: string;
   title: string;
   lastMessage: string;
   messageCount: number;
@@ -98,7 +124,7 @@ export function getAgentColor(agentId: string, index?: number): Color {
 export function generateConversationTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.role === "user");
   if (!firstUserMessage) return "New Conversation";
-  
+
   const content = firstUserMessage.content.trim();
   if (content.length <= 50) return content;
   return content.slice(0, 47) + "...";
@@ -109,12 +135,14 @@ export function generateConversationTitle(messages: Message[]): string {
  */
 export function createConversationSummary(conversation: Conversation): ConversationSummary {
   const lastMessage = conversation.messages[conversation.messages.length - 1];
-  
+
   return {
     id: conversation.id,
     agentId: conversation.agentId,
     agentName: conversation.agentName,
     agentColor: conversation.agentColor,
+    accountId: conversation.accountId,
+    accountName: conversation.accountName,
     title: conversation.title || generateConversationTitle(conversation.messages),
     lastMessage: lastMessage?.content.slice(0, 100) || "No messages",
     messageCount: conversation.messages.length,

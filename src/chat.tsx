@@ -4,36 +4,27 @@
  * Shows conversations for the selected agent.
  * - Left panel: List of conversations with selected agent
  * - Right panel: Full conversation detail
- * - Dropdown: Select which agent to chat with
+ * - Dropdown: Select which agent to chat with (from all accounts)
  * - Search bar: Type message and press Enter to send
  */
 
-import {
-  Action,
-  ActionPanel,
-  List,
-  Icon,
-  showToast,
-  Toast,
-  confirmAlert,
-  Alert,
-} from "@raycast/api";
+import { Action, ActionPanel, List, Icon, showToast, Toast, confirmAlert, Alert } from "@raycast/api";
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useLettaClient, useAgents, useConversations } from "./hooks";
-import type { Conversation, AgentWithColor } from "./types";
-import { getAgentColor } from "./types";
+import { useLettaClient, useAgents, useConversations, toAgentsWithAccount } from "./hooks";
+import type { Conversation, AgentWithAccount } from "./types";
 import MemoryCommand from "./memory";
 
 export default function ChatCommand() {
-  const { client, showReasoning } = useLettaClient();
-  const { agents, isLoading: agentsLoading, revalidate: revalidateAgents } = useAgents(client);
+  const { accounts, getClientForAccount, getClientForAgent, showReasoning } = useLettaClient();
+  const {
+    agents,
+    isLoading: agentsLoading,
+    revalidate: revalidateAgents,
+  } = useAgents(accounts, getClientForAccount);
 
-  // Map agents to include colors
-  const agentsWithColors: AgentWithColor[] = useMemo(() => {
-    return (agents || []).map((agent, index) => ({
-      ...agent,
-      color: getAgentColor(agent.id, index),
-    }));
+  // Map agents to include colors and account info
+  const agentsWithColors: AgentWithAccount[] = useMemo(() => {
+    return toAgentsWithAccount(agents || []);
   }, [agents]);
 
   // Conversations state
@@ -55,7 +46,6 @@ export default function ChatCommand() {
   const [searchText, setSearchText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
-  const [streamingReasoning, setStreamingReasoning] = useState("");
 
   // Auto-select first agent if none selected
   useEffect(() => {
@@ -79,6 +69,17 @@ export default function ChatCommand() {
     async (text: string) => {
       if (!text.trim() || isStreaming || !selectedAgent) return;
 
+      // Get the client for this agent's account
+      const client = getClientForAgent(selectedAgent);
+      if (!client) {
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Error",
+          message: `No client found for account ${selectedAgent.accountName}`,
+        });
+        return;
+      }
+
       // Get or create conversation
       let conversation = activeConversation;
       if (!conversation || conversation.agentId !== selectedAgent.id) {
@@ -94,7 +95,6 @@ export default function ChatCommand() {
 
       setIsStreaming(true);
       setStreamingContent("");
-      setStreamingReasoning("");
 
       try {
         // Add placeholder assistant message
@@ -154,7 +154,6 @@ export default function ChatCommand() {
                   if (reasoning) {
                     reasoningParts.push(reasoning);
                     finalReasoning = reasoningParts.join("\n");
-                    setStreamingReasoning(finalReasoning);
                   }
                   break;
                 }
@@ -174,7 +173,7 @@ export default function ChatCommand() {
 
           const responseMessages: Record<string, unknown>[] = Array.isArray(response)
             ? response
-            : ((response as Record<string, unknown>).messages as Record<string, unknown>[]) ?? [];
+            : (((response as Record<string, unknown>).messages as Record<string, unknown>[]) ?? []);
 
           for (const msg of responseMessages) {
             const msgType = msg.message_type as string | undefined;
@@ -202,10 +201,17 @@ export default function ChatCommand() {
       } finally {
         setIsStreaming(false);
         setStreamingContent("");
-        setStreamingReasoning("");
       }
     },
-    [client, selectedAgent, activeConversation, startConversation, addMessage, updateLastMessage, isStreaming]
+    [
+      getClientForAgent,
+      selectedAgent,
+      activeConversation,
+      startConversation,
+      addMessage,
+      updateLastMessage,
+      isStreaming,
+    ]
   );
 
   // Handle search/input submission
@@ -228,12 +234,15 @@ export default function ChatCommand() {
     (conversation: Conversation | null): string => {
       if (!conversation) {
         return `## Welcome to Letta\n\nSelect a conversation or type a message to start chatting.\n\n${
-          selectedAgent ? `**Current Agent:** ${selectedAgent.name}` : "Select an agent from the dropdown."
+          selectedAgent
+            ? `**Current Agent:** ${selectedAgent.name} (${selectedAgent.accountName})`
+            : "Select an agent from the dropdown."
         }`;
       }
 
       const lines: string[] = [];
       lines.push(`## ${conversation.agentName}\n`);
+      lines.push(`*Project: ${conversation.accountName}*\n`);
 
       if (conversation.messages.length === 0) {
         lines.push("*No messages yet. Type your message above and press Enter.*");
@@ -246,10 +255,11 @@ export default function ChatCommand() {
           lines.push(`**You:** ${msg.content}\n`);
         } else {
           // Show streaming content if this is the last message and we're streaming
-          const content = isStreaming && msg === conversation.messages[conversation.messages.length - 1]
-            ? (streamingContent || "Thinking...")
-            : msg.content;
-          
+          const content =
+            isStreaming && msg === conversation.messages[conversation.messages.length - 1]
+              ? streamingContent || "Thinking..."
+              : msg.content;
+
           lines.push(`${content}\n`);
 
           // Show reasoning if enabled
@@ -269,7 +279,18 @@ export default function ChatCommand() {
     [selectedAgent, showReasoning, isStreaming, streamingContent]
   );
 
-  // Agent selector dropdown
+  // Group agents by account for the dropdown
+  const accountGroups = useMemo(() => {
+    const groups = new Map<string, AgentWithAccount[]>();
+    for (const agent of agentsWithColors) {
+      const existing = groups.get(agent.accountId) || [];
+      existing.push(agent);
+      groups.set(agent.accountId, existing);
+    }
+    return groups;
+  }, [agentsWithColors]);
+
+  // Agent selector dropdown with account grouping
   const agentDropdown = (
     <List.Dropdown
       tooltip="Select Agent"
@@ -279,14 +300,21 @@ export default function ChatCommand() {
         setActiveConversation(null); // Clear active conversation when switching agents
       }}
     >
-      {agentsWithColors.map((agent) => (
-        <List.Dropdown.Item
-          key={agent.id}
-          title={agent.name}
-          value={agent.id}
-          icon={{ source: Icon.Person, tintColor: agent.color }}
-        />
-      ))}
+      {Array.from(accountGroups.entries()).map(([accountId, accountAgents]) => {
+        const accountName = accountAgents[0]?.accountName || accountId;
+        return (
+          <List.Dropdown.Section key={accountId} title={accountName}>
+            {accountAgents.map((agent) => (
+              <List.Dropdown.Item
+                key={agent.id}
+                title={agent.name}
+                value={agent.id}
+                icon={{ source: Icon.Person, tintColor: agent.color }}
+              />
+            ))}
+          </List.Dropdown.Section>
+        );
+      })}
     </List.Dropdown>
   );
 
@@ -315,16 +343,8 @@ export default function ChatCommand() {
           description="Create agents at app.letta.com, then refresh"
           actions={
             <ActionPanel>
-              <Action.OpenInBrowser
-                icon={Icon.Globe}
-                title="Open Letta"
-                url="https://app.letta.com"
-              />
-              <Action
-                icon={Icon.ArrowClockwise}
-                title="Refresh Agents"
-                onAction={() => revalidateAgents()}
-              />
+              <Action.OpenInBrowser icon={Icon.Globe} title="Open Letta" url="https://app.letta.com" />
+              <Action icon={Icon.ArrowClockwise} title="Refresh Agents" onAction={() => revalidateAgents()} />
             </ActionPanel>
           }
         />
@@ -338,11 +358,7 @@ export default function ChatCommand() {
           description={`Type a message above to start chatting with ${selectedAgent?.name || "an agent"}`}
           actions={
             <ActionPanel>
-              <Action
-                icon={Icon.Message}
-                title="Send Message"
-                onAction={handleSubmit}
-              />
+              <Action icon={Icon.Message} title="Send Message" onAction={handleSubmit} />
             </ActionPanel>
           }
         />
@@ -362,23 +378,18 @@ export default function ChatCommand() {
               title={summary.title}
               subtitle={summary.lastMessage.slice(0, 40)}
               accessories={[
+                { tag: { value: summary.accountName, color: summary.agentColor } },
                 { tag: { value: summary.agentName, color: summary.agentColor } },
                 { text: `${summary.messageCount} msgs` },
                 { date: summary.updatedAt },
               ]}
               detail={
-                <List.Item.Detail
-                  markdown={buildConversationMarkdown(getConversation(summary.id) || null)}
-                />
+                <List.Item.Detail markdown={buildConversationMarkdown(getConversation(summary.id) || null)} />
               }
               actions={
                 <ActionPanel>
                   <ActionPanel.Section title="Chat">
-                    <Action
-                      icon={Icon.Message}
-                      title="Send Message"
-                      onAction={handleSubmit}
-                    />
+                    <Action icon={Icon.Message} title="Send Message" onAction={handleSubmit} />
                   </ActionPanel.Section>
 
                   <ActionPanel.Section title="Conversation">
@@ -411,7 +422,13 @@ export default function ChatCommand() {
                     <Action.Push
                       icon={Icon.Book}
                       title="View Agent Memory"
-                      target={<MemoryCommand agentId={summary.agentId} agentName={summary.agentName} />}
+                      target={
+                        <MemoryCommand
+                          agentId={summary.agentId}
+                          agentName={summary.agentName}
+                          accountId={summary.accountId}
+                        />
+                      }
                       shortcut={{ modifiers: ["cmd"], key: "m" }}
                     />
                     <Action.OpenInBrowser

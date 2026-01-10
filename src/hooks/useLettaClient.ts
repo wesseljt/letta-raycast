@@ -1,36 +1,46 @@
 /**
  * Letta Client Hook
  *
- * Single source of truth for reading Raycast preferences,
- * instantiating the Letta client, and exposing config flags.
+ * Provides access to Letta clients for multi-account support.
+ * Wraps useAccounts with convenience methods for getting the right client.
  */
 
-import { getPreferenceValues } from "@raycast/api";
-import { Letta } from "@letta-ai/letta-client";
+import { useAccounts } from "./useAccounts";
+import type { Letta } from "@letta-ai/letta-client";
+import type { AgentSummary } from "./useAgents";
+import type { AgentWithAccount } from "../types";
 
-type ExtensionPreferences = {
-  apiKey: string;
-  baseUrl?: string;
-  showReasoning?: boolean;
-};
-
+/**
+ * Main hook for Letta client access
+ *
+ * Returns all accounts and helper functions for getting clients
+ */
 export function useLettaClient() {
-  const { apiKey, baseUrl, showReasoning } = getPreferenceValues<ExtensionPreferences>();
+  const { accounts, getClientForAccount, showReasoning } = useAccounts();
 
-  const client = new Letta({
-    apiKey,
-    ...(baseUrl ? { baseUrl } : {}),
-  });
+  /**
+   * Get the client for a specific agent
+   * Looks up which account the agent belongs to and returns that client
+   */
+  const getClientForAgent = (
+    agent: AgentSummary | AgentWithAccount | { accountId: string }
+  ): Letta | undefined => {
+    return getClientForAccount(agent.accountId);
+  };
 
   return {
-    client,
-    showReasoning: showReasoning ?? true,
+    /** All configured accounts */
+    accounts,
+    /** Get client for a specific account ID */
+    getClientForAccount,
+    /** Get client for a specific agent (by its accountId) */
+    getClientForAgent,
+    /** Whether to show reasoning in chat */
+    showReasoning,
   };
 }
 
 /**
- * Get preferences without creating a client
+ * Re-export for backwards compatibility and direct access
  */
-export function getPreferences(): ExtensionPreferences {
-  return getPreferenceValues<ExtensionPreferences>();
-}
+export { useAccounts, getAccounts } from "./useAccounts";
