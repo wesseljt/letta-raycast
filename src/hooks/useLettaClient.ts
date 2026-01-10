@@ -18,7 +18,7 @@ export function useLettaClient() {
   const { apiKey, baseUrl, showReasoning } = getPreferenceValues<ExtensionPreferences>();
 
   const client = new Letta({
-    token: apiKey,
+    apiKey,
     ...(baseUrl ? { baseUrl } : {}),
   });
 

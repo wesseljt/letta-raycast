@@ -37,18 +37,9 @@ export function useChat(client: Letta, agentId?: string | null) {
       const timestamp = new Date().toISOString();
       const formattedInput = `[Message from Raycast at ${timestamp}]\n\n${input}`;
 
+      // Use the simple 'input' field per Letta SDK docs
       const response = await client.agents.messages.create(agentId, {
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: formattedInput,
-              },
-            ],
-          },
-        ],
+        input: formattedInput,
       });
 
       // Parse response messages
@@ -77,11 +68,15 @@ export function useChat(client: Letta, agentId?: string | null) {
           if (reasoningContent) {
             reasoningParts.push(reasoningContent);
           }
-        } else if (messageType === "tool_call_message" || messageType === "tool_call") {
-          tools.push({
-            name: (m.tool_name as string) || (m.name as string) || "unknown",
-            arguments: m.arguments as Record<string, unknown> | undefined,
-          });
+        } else if (messageType === "tool_call_message") {
+          // Tool calls have a nested tool_call object per SDK docs
+          const toolCall = m.tool_call as { name: string; arguments?: Record<string, unknown> } | undefined;
+          if (toolCall) {
+            tools.push({
+              name: toolCall.name || "unknown",
+              arguments: toolCall.arguments,
+            });
+          }
         }
       }
 

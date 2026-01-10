@@ -99,7 +99,7 @@ export default function CreateAgentCommand() {
         description: description.trim() || undefined,
         model: "openai/gpt-4.1",
         embedding: "openai/text-embedding-3-small",
-        memoryBlocks: selectedTemplate.memoryBlocks,
+        memory_blocks: selectedTemplate.memoryBlocks,  // SDK expects snake_case
         tools: ["web_search"],
       });
 

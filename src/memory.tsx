@@ -6,7 +6,7 @@
  */
 
 import { Action, ActionPanel, Detail, Icon, List, showToast, Toast, Color } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLettaClient, useAgents } from "./hooks";
 
 type MemoryBlock = {
@@ -21,37 +21,45 @@ export default function MemoryCommand() {
   const [blocks, setBlocks] = useState<MemoryBlock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
+  const fetchMemory = useCallback(async () => {
     if (!activeAgent) return;
 
     setIsLoading(true);
     setError(null);
 
-    client.agents.coreMemory
-      .retrieve(activeAgent.id)
-      .then((res: unknown) => {
-        // Parse the response - adjust based on actual SDK shape
-        const blocks = (res as { blocks?: { id: string; label: string; value: string }[] }).blocks ?? [];
-        setBlocks(
-          blocks.map((b) => ({
-            id: b.id || b.label,
-            label: b.label,
-            value: b.value || "",
-          }))
-        );
-      })
-      .catch((e: unknown) => {
-        const errorMessage = e instanceof Error ? e.message : "Unknown error";
-        setError(errorMessage);
-        showToast({
-          style: Toast.Style.Failure,
-          title: "Error loading memory",
-          message: errorMessage,
-        });
-      })
-      .finally(() => setIsLoading(false));
-  }, [activeAgent?.id]);
+    try {
+      const res = await client.agents.coreMemory.retrieve(activeAgent.id);
+      // Parse the response - adjust based on actual SDK shape
+      const memoryBlocks = (res as { blocks?: { id: string; label: string; value: string }[] }).blocks ?? [];
+      setBlocks(
+        memoryBlocks.map((b) => ({
+          id: b.id || b.label,
+          label: b.label,
+          value: b.value || "",
+        }))
+      );
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : "Unknown error";
+      setError(errorMessage);
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Error loading memory",
+        message: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeAgent?.id, client]);
+
+  useEffect(() => {
+    fetchMemory();
+  }, [fetchMemory, refreshKey]);
+
+  const handleRetry = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   // No active agent
   if (!agentsLoading && !activeAgent) {
@@ -82,7 +90,7 @@ ${error}
 Try refreshing or selecting a different agent.`}
         actions={
           <ActionPanel>
-            <Action title="Retry" onAction={() => window.location.reload()} />
+            <Action icon={Icon.ArrowClockwise} title="Retry" onAction={handleRetry} />
             <Action.Push title="Manage Agents" target={<AgentsCommand />} />
           </ActionPanel>
         }
@@ -132,6 +140,12 @@ Try refreshing or selecting a different agent.`}
                   title="Copy as Markdown"
                   content={`## ${block.label}\n\n${block.value}`}
                   shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                />
+                <Action
+                  icon={Icon.ArrowClockwise}
+                  title="Refresh Memory"
+                  shortcut={{ modifiers: ["cmd"], key: "r" }}
+                  onAction={handleRetry}
                 />
               </ActionPanel>
             }

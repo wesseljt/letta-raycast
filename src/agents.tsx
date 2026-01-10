@@ -6,8 +6,10 @@
  */
 
 import { Action, ActionPanel, Icon, List, showToast, Toast, Color } from "@raycast/api";
+import { useEffect } from "react";
 import { useLettaClient, useAgents } from "./hooks";
 import CreateAgentCommand from "./create-agent";
+import ChatCommand from "./chat";
 
 export default function AgentsCommand() {
   const { client } = useLettaClient();
@@ -118,14 +120,13 @@ export default function AgentsCommand() {
  * Quick chat view when selecting an agent
  */
 function ChatWithAgent({ agentId, agentName }: { agentId: string; agentName: string }) {
-  // This sets the agent as active and opens chat
   const { client } = useLettaClient();
   const { setActiveAgentId } = useAgents(client);
 
-  // Set as active when opening
-  setActiveAgentId(agentId);
+  // Set as active when component mounts (not during render!)
+  useEffect(() => {
+    setActiveAgentId(agentId);
+  }, [agentId, setActiveAgentId]);
 
-  // Import and render the chat command
-  const ChatCommand = require("./chat").default;
   return <ChatCommand />;
 }
