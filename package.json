@@ -1,0 +1,107 @@
+{
+    "$schema": "https://www.raycast.com/schemas/extension.json",
+    "name": "letta",
+    "title": "Letta Agents",
+    "description": "Chat with Letta stateful agents that remember and learn over time",
+    "icon": "icon.png",
+    "author": "jwessel",
+    "categories": [
+        "Productivity",
+        "Developer Tools"
+    ],
+    "license": "MIT",
+    "commands": [
+        {
+            "name": "chat",
+            "title": "Chat with Agent",
+            "description": "Talk to your active Letta agent",
+            "mode": "view",
+            "keywords": [
+                "letta",
+                "chat",
+                "agent",
+                "ai"
+            ]
+        },
+        {
+            "name": "agents",
+            "title": "Manage Agents",
+            "description": "List, switch and create Letta agents",
+            "mode": "view",
+            "keywords": [
+                "letta",
+                "agents",
+                "manage"
+            ]
+        },
+        {
+            "name": "memory",
+            "title": "View Agent Memory",
+            "description": "Inspect an agent's memory blocks",
+            "mode": "view",
+            "keywords": [
+                "letta",
+                "memory",
+                "blocks"
+            ]
+        },
+        {
+            "name": "create-agent",
+            "title": "Create Letta Agent",
+            "description": "Create a new Letta agent from a template",
+            "mode": "view",
+            "keywords": [
+                "letta",
+                "create",
+                "new",
+                "ion"
+            ]
+        }
+    ],
+    "preferences": [
+        {
+            "name": "apiKey",
+            "title": "Letta API Key",
+            "description": "Get from the Letta dashboard (Cloud or local)",
+            "type": "password",
+            "required": true
+        },
+        {
+            "name": "baseUrl",
+            "title": "Custom Letta Base URL",
+            "description": "Optional. Use for self-hosted Letta, e.g. http://localhost:8283",
+            "type": "textfield",
+            "required": false
+        },
+        {
+            "name": "showReasoning",
+            "title": "Show Agent Reasoning",
+            "description": "Display the agent's internal thoughts and tool usage",
+            "type": "checkbox",
+            "label": "Show reasoning and tool events in chat",
+            "required": false,
+            "default": true
+        }
+    ],
+    "dependencies": {
+        "@letta-ai/letta-client": "^1.6.5",
+        "@raycast/api": "^1.103.0",
+        "@raycast/utils": "^1.20.0"
+    },
+    "devDependencies": {
+        "@raycast/eslint-config": "^1.0.11",
+        "@types/node": "22.10.2",
+        "@types/react": "18.3.17",
+        "eslint": "^8.57.0",
+        "prettier": "^3.4.2",
+        "typescript": "^5.7.2"
+    },
+    "scripts": {
+        "build": "ray build --skip-types -e dist -o dist",
+        "dev": "ray develop",
+        "fix-lint": "ray lint --fix",
+        "lint": "ray lint",
+        "prepublishOnly": "echo \"\\n\\nIt seems like you are trying to publish the Raycast extension to npm.\\n\\nIf you did intend to publish it to npm, remove the \\`prepublishOnly\\` script and rerun \\`npm publish\\` again.\\nIf you wanted to publish it to the Raycast Store instead, use \\`npm run publish\\` instead.\\n\\n\" && exit 1",
+        "publish": "npx @raycast/api@latest publish"
+    }
+}
