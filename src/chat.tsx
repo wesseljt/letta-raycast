@@ -1,394 +1,439 @@
 /**
- * Chat with Agent Command
+ * Unified Chat Command
  *
- * Split-pane chat interface:
- * - Left sidebar: Chat history (previous conversations)
- * - Right panel: Current conversation messages with thinking/response
- * - Bottom: Input action
+ * Shows conversations for the selected agent.
+ * - Left panel: List of conversations with selected agent
+ * - Right panel: Full conversation detail
+ * - Dropdown: Select which agent to chat with
+ * - Search bar: Type message and press Enter to send
  */
 
 import {
   Action,
   ActionPanel,
   List,
-  Form,
+  Icon,
   showToast,
   Toast,
-  Icon,
-  Color,
-  useNavigation,
+  confirmAlert,
+  Alert,
 } from "@raycast/api";
-import { useState, useEffect } from "react";
-import { useLettaClient, useAgents, useChat } from "./hooks";
-import type { ChatMessage } from "./hooks/useChat";
-import AgentsCommand from "./agents";
-import CreateAgentCommand from "./create-agent";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useLettaClient, useAgents, useConversations } from "./hooks";
+import type { Conversation, AgentWithColor } from "./types";
+import { getAgentColor } from "./types";
 import MemoryCommand from "./memory";
-
-// Store for chat sessions (in-memory for now)
-type ChatSession = {
-  id: string;
-  title: string;
-  timestamp: Date;
-  messages: ChatMessage[];
-  agentId: string;
-};
 
 export default function ChatCommand() {
   const { client, showReasoning } = useLettaClient();
-  const { activeAgent, agents, isLoading: agentsLoading } = useAgents(client);
-  const { isLoading, messages, answer, reasoning, toolCalls, error, send, reset } = useChat(
-    client,
-    activeAgent?.id
-  );
+  const { agents, isLoading: agentsLoading, revalidate: revalidateAgents } = useAgents(client);
+
+  // Map agents to include colors
+  const agentsWithColors: AgentWithColor[] = useMemo(() => {
+    return (agents || []).map((agent, index) => ({
+      ...agent,
+      color: getAgentColor(agent.id, index),
+    }));
+  }, [agents]);
+
+  // Conversations state
+  const {
+    summaries,
+    activeConversation,
+    isLoading: conversationsLoading,
+    agentFilter,
+    setAgentFilter,
+    startConversation,
+    addMessage,
+    updateLastMessage,
+    setActiveConversation,
+    deleteConversation,
+    getConversation,
+  } = useConversations(agentsWithColors);
+
+  // Chat state
   const [searchText, setSearchText] = useState("");
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [streamingReasoning, setStreamingReasoning] = useState("");
 
-  // Show warning if no active agent but agents exist
+  // Auto-select first agent if none selected
   useEffect(() => {
-    if (!agentsLoading && !activeAgent && agents && agents.length > 0) {
-      showToast({
-        style: Toast.Style.Failure,
-        title: "No active agent",
-        message: "Open 'Manage Agents' to pick one.",
-      });
+    if (agentsWithColors.length > 0 && agentFilter === "all") {
+      setAgentFilter(agentsWithColors[0].id);
     }
-  }, [agentsLoading, activeAgent, agents]);
+  }, [agentsWithColors, agentFilter, setAgentFilter]);
 
-  // Auto-create a session when messages start
-  useEffect(() => {
-    if (messages.length > 0 && !currentSessionId && activeAgent) {
-      const firstUserMsg = messages.find((m) => m.role === "user");
-      const newSession: ChatSession = {
-        id: Date.now().toString(),
-        title: firstUserMsg?.content.slice(0, 30) + "..." || "New Chat",
-        timestamp: new Date(),
-        messages: [...messages],
-        agentId: activeAgent.id,
-      };
-      setChatSessions((prev) => [newSession, ...prev]);
-      setCurrentSessionId(newSession.id);
-    } else if (currentSessionId && messages.length > 0) {
-      // Update existing session
-      setChatSessions((prev) =>
-        prev.map((s) => (s.id === currentSessionId ? { ...s, messages: [...messages] } : s))
-      );
+  // Get the currently selected agent (always have one selected)
+  const selectedAgent = useMemo(() => {
+    // If viewing a conversation, use that agent
+    if (activeConversation) {
+      return agentsWithColors.find((a) => a.id === activeConversation.agentId);
     }
-  }, [messages, currentSessionId, activeAgent]);
+    // Otherwise use the filtered agent
+    return agentsWithColors.find((a) => a.id === agentFilter) || agentsWithColors[0];
+  }, [activeConversation, agentFilter, agentsWithColors]);
 
-  // Handle sending message
-  const handleSubmit = (message: string) => {
-    if (message.trim() && !isLoading) {
-      void send(message.trim());
-    }
-  };
+  // Send message to the selected agent
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim() || isStreaming || !selectedAgent) return;
 
-  // Start a new chat
-  const startNewChat = () => {
-    reset();
-    setCurrentSessionId(null);
-  };
-
-  // Load a previous session
-  const loadSession = (session: ChatSession) => {
-    // For now, just show the session - full restore would need backend support
-    setCurrentSessionId(session.id);
-  };
-
-  // Build the conversation markdown for the detail panel
-  const buildConversationMarkdown = (): string => {
-    const parts: string[] = [];
-
-    if (activeAgent) {
-      parts.push(`# ${activeAgent.name}\n`);
-    }
-
-    if (error) {
-      parts.push(`> ⚠️ **Error:** ${error}\n`);
-    }
-
-    // Show all messages in the conversation
-    for (const msg of messages) {
-      if (msg.role === "user") {
-        parts.push(`### 👤 You\n${msg.content}\n`);
-      } else if (msg.role === "assistant") {
-        parts.push(`### 🤖 Agent\n${msg.content}\n`);
+      // Get or create conversation
+      let conversation = activeConversation;
+      if (!conversation || conversation.agentId !== selectedAgent.id) {
+        conversation = startConversation(selectedAgent);
       }
-    }
 
-    // Show streaming response
-    if (isLoading && answer) {
-      parts.push(`### 🤖 Agent\n${answer}\n\n_Thinking..._`);
-    }
+      // Add user message
+      addMessage(conversation.id, {
+        role: "user",
+        content: text.trim(),
+        timestamp: new Date(),
+      });
 
-    // Show reasoning block if enabled
-    if (showReasoning && reasoning) {
-      parts.push(`---\n\n### 🧠 Thinking\n\n${reasoning}`);
-    }
+      setIsStreaming(true);
+      setStreamingContent("");
+      setStreamingReasoning("");
 
-    // Show tool usage if enabled
-    if (showReasoning && toolCalls.length > 0) {
-      const toolSection = toolCalls
-        .map((t) => {
-          const argsStr = t.arguments ? `\n\`\`\`json\n${JSON.stringify(t.arguments, null, 2)}\n\`\`\`` : "";
-          return `- **${t.name}**${argsStr}`;
-        })
-        .join("\n");
-      parts.push(`---\n\n### 🔧 Tools Used\n\n${toolSection}`);
-    }
+      try {
+        // Add placeholder assistant message
+        addMessage(conversation.id, {
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+        });
 
-    if (parts.length === 0 || (parts.length === 1 && activeAgent)) {
-      parts.push("\n_Start a conversation by pressing Enter or clicking 'Send Message'_");
-    }
+        let finalAnswer = "";
+        let finalReasoning = "";
+        let streamingWorked = false;
 
-    return parts.join("\n\n");
-  };
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const messagesApi = client.agents.messages as any;
+          let stream: AsyncIterable<unknown> | null = null;
 
-  // No active agent - show setup instructions
-  if (!agentsLoading && !activeAgent) {
-    return (
-      <List
-        searchBarPlaceholder="Search chats..."
-        actions={
-          <ActionPanel>
-            <Action.Push title="Manage Agents" target={<AgentsCommand />} />
-            <Action.Push title="Create Agent" target={<CreateAgentCommand />} />
-          </ActionPanel>
-        }
-      >
-        <List.EmptyView
-          icon={Icon.Person}
-          title="No Active Agent"
-          description="Select an agent to start chatting"
-          actions={
-            <ActionPanel>
-              <Action.Push title="Manage Agents" target={<AgentsCommand />} />
-              <Action.Push title="Create Agent" target={<CreateAgentCommand />} />
-            </ActionPanel>
-          }
-        />
-      </List>
-    );
-  }
-
-  // Group sessions by time
-  const todaySessions = chatSessions.filter((s) => {
-    const today = new Date();
-    return s.timestamp.toDateString() === today.toDateString();
-  });
-
-  const thisWeekSessions = chatSessions.filter((s) => {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return s.timestamp > weekAgo && s.timestamp.toDateString() !== today.toDateString();
-  });
-
-  const olderSessions = chatSessions.filter((s) => {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return s.timestamp <= weekAgo;
-  });
-
-  // Detail panel showing current conversation
-  const conversationDetail = (
-    <List.Item.Detail markdown={buildConversationMarkdown()} />
-  );
-
-  // Common actions for all items
-  const getCommonActions = () => (
-    <ActionPanel>
-      <Action.Push
-        icon={Icon.Message}
-        title="Send Message"
-        shortcut={{ modifiers: [], key: "return" }}
-        target={<PromptForm agentName={activeAgent?.name ?? "Agent"} onSubmit={handleSubmit} />}
-      />
-      <Action
-        icon={Icon.Plus}
-        title="New Chat"
-        shortcut={{ modifiers: ["cmd"], key: "n" }}
-        onAction={startNewChat}
-      />
-      {messages.length > 0 && (
-        <Action
-          icon={Icon.Trash}
-          title="Clear Conversation"
-          shortcut={{ modifiers: ["cmd"], key: "k" }}
-          onAction={() => {
-            reset();
-            setCurrentSessionId(null);
-            showToast({
-              style: Toast.Style.Success,
-              title: "Conversation cleared",
+          if (typeof messagesApi.createStream === "function") {
+            stream = await messagesApi.createStream(selectedAgent.id, {
+              input: text.trim(),
+              stream_tokens: false,
             });
-          }}
-        />
-      )}
-      <Action.Push
-        icon={Icon.Person}
-        title="Manage Agents"
-        target={<AgentsCommand />}
-        shortcut={{ modifiers: ["cmd"], key: "a" }}
-      />
-      <Action.Push
-        icon={Icon.Book}
-        title="View Memory"
-        target={<MemoryCommand />}
-        shortcut={{ modifiers: ["cmd"], key: "m" }}
-      />
-    </ActionPanel>
+          } else if (typeof messagesApi.stream === "function") {
+            stream = await messagesApi.stream(selectedAgent.id, {
+              input: text.trim(),
+              stream_tokens: false,
+            });
+          }
+
+          if (stream) {
+            const contentByMessageId = new Map<string, string>();
+            const reasoningParts: string[] = [];
+
+            for await (const chunk of stream) {
+              const event = chunk as Record<string, unknown>;
+              const messageType = event.message_type as string | undefined;
+              const messageId = event.id as string | undefined;
+
+              switch (messageType) {
+                case "assistant_message": {
+                  const content = extractAssistantContent(event.content);
+                  if (content && messageId) {
+                    const existing = contentByMessageId.get(messageId) || "";
+                    if (content.length > existing.length) {
+                      contentByMessageId.set(messageId, content);
+                    }
+                    finalAnswer = Array.from(contentByMessageId.values()).join("");
+                    setStreamingContent(finalAnswer);
+                    updateLastMessage(conversation!.id, finalAnswer, finalReasoning);
+                  }
+                  break;
+                }
+                case "reasoning_message":
+                case "hidden_reasoning_message": {
+                  const reasoning = (event.reasoning as string) || (event.hidden_reasoning as string) || "";
+                  if (reasoning) {
+                    reasoningParts.push(reasoning);
+                    finalReasoning = reasoningParts.join("\n");
+                    setStreamingReasoning(finalReasoning);
+                  }
+                  break;
+                }
+              }
+            }
+            streamingWorked = true;
+          }
+        } catch (streamError) {
+          console.log("Streaming failed, falling back:", streamError);
+        }
+
+        // Fallback to non-streaming
+        if (!streamingWorked) {
+          const response = await client.agents.messages.create(selectedAgent.id, {
+            input: text.trim(),
+          });
+
+          const responseMessages: Record<string, unknown>[] = Array.isArray(response)
+            ? response
+            : ((response as Record<string, unknown>).messages as Record<string, unknown>[]) ?? [];
+
+          for (const msg of responseMessages) {
+            const msgType = msg.message_type as string | undefined;
+            if (msgType === "assistant_message") {
+              finalAnswer += extractAssistantContent(msg.content);
+            } else if (msgType === "reasoning_message") {
+              finalReasoning += (msg.reasoning as string) || "";
+            }
+          }
+        }
+
+        // Update final message
+        updateLastMessage(conversation!.id, finalAnswer, finalReasoning);
+
+        showToast({
+          style: Toast.Style.Success,
+          title: "Response received",
+        });
+      } catch (error) {
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Error",
+          message: error instanceof Error ? error.message : "Failed to send message",
+        });
+      } finally {
+        setIsStreaming(false);
+        setStreamingContent("");
+        setStreamingReasoning("");
+      }
+    },
+    [client, selectedAgent, activeConversation, startConversation, addMessage, updateLastMessage, isStreaming]
   );
+
+  // Handle search/input submission
+  const handleSubmit = useCallback(() => {
+    if (searchText.trim() && selectedAgent) {
+      sendMessage(searchText);
+      setSearchText("");
+    }
+  }, [searchText, sendMessage, selectedAgent]);
+
+  // Dynamic placeholder based on state
+  const searchPlaceholder = useMemo(() => {
+    if (isStreaming) return "Waiting for response...";
+    if (selectedAgent) return `Message ${selectedAgent.name}...`;
+    return "Select an agent to start chatting...";
+  }, [isStreaming, selectedAgent]);
+
+  // Build markdown for conversation detail
+  const buildConversationMarkdown = useCallback(
+    (conversation: Conversation | null): string => {
+      if (!conversation) {
+        return `## Welcome to Letta\n\nSelect a conversation or type a message to start chatting.\n\n${
+          selectedAgent ? `**Current Agent:** ${selectedAgent.name}` : "Select an agent from the dropdown."
+        }`;
+      }
+
+      const lines: string[] = [];
+      lines.push(`## ${conversation.agentName}\n`);
+
+      if (conversation.messages.length === 0) {
+        lines.push("*No messages yet. Type your message above and press Enter.*");
+        return lines.join("\n");
+      }
+
+      // Show messages in chronological order
+      for (const msg of conversation.messages) {
+        if (msg.role === "user") {
+          lines.push(`**You:** ${msg.content}\n`);
+        } else {
+          // Show streaming content if this is the last message and we're streaming
+          const content = isStreaming && msg === conversation.messages[conversation.messages.length - 1]
+            ? (streamingContent || "Thinking...")
+            : msg.content;
+          
+          lines.push(`${content}\n`);
+
+          // Show reasoning if enabled
+          if (showReasoning && msg.reasoning) {
+            lines.push(`\n> 🧠 *${msg.reasoning.slice(0, 200)}${msg.reasoning.length > 200 ? "..." : ""}*\n`);
+          }
+        }
+        lines.push("---\n");
+      }
+
+      if (isStreaming) {
+        lines.push("\n*Thinking...*");
+      }
+
+      return lines.join("\n");
+    },
+    [selectedAgent, showReasoning, isStreaming, streamingContent]
+  );
+
+  // Agent selector dropdown
+  const agentDropdown = (
+    <List.Dropdown
+      tooltip="Select Agent"
+      value={selectedAgent?.id || ""}
+      onChange={(newAgentId) => {
+        setAgentFilter(newAgentId);
+        setActiveConversation(null); // Clear active conversation when switching agents
+      }}
+    >
+      {agentsWithColors.map((agent) => (
+        <List.Dropdown.Item
+          key={agent.id}
+          title={agent.name}
+          value={agent.id}
+          icon={{ source: Icon.Person, tintColor: agent.color }}
+        />
+      ))}
+    </List.Dropdown>
+  );
+
+  const isLoading = agentsLoading || conversationsLoading || isStreaming;
+  const hasAgents = agentsWithColors.length > 0;
+  const hasConversations = summaries.length > 0;
 
   return (
     <List
-      isLoading={isLoading || agentsLoading}
-      isShowingDetail={true}
-      searchBarPlaceholder="Search chats..."
+      isLoading={isLoading}
+      isShowingDetail={hasConversations || activeConversation !== null}
+      filtering={false}
       searchText={searchText}
       onSearchTextChange={setSearchText}
-      filtering={true}
+      searchBarPlaceholder={searchPlaceholder}
+      searchBarAccessory={agentDropdown}
+      onSelectionChange={(id) => {
+        if (id) setActiveConversation(id);
+      }}
     >
-      {/* Current Chat Section */}
-      <List.Section title="Current Chat">
-        <List.Item
-          icon={{ source: Icon.Message, tintColor: Color.Blue }}
-          title={
-            messages.length > 0
-              ? messages[0].content.slice(0, 30) + (messages[0].content.length > 30 ? "..." : "")
-              : "New Chat"
+      {/* Empty state - no agents */}
+      {!isLoading && !hasAgents && (
+        <List.EmptyView
+          icon={Icon.Person}
+          title="No Agents Found"
+          description="Create agents at app.letta.com, then refresh"
+          actions={
+            <ActionPanel>
+              <Action.OpenInBrowser
+                icon={Icon.Globe}
+                title="Open Letta"
+                url="https://app.letta.com"
+              />
+              <Action
+                icon={Icon.ArrowClockwise}
+                title="Refresh Agents"
+                onAction={() => revalidateAgents()}
+              />
+            </ActionPanel>
           }
-          subtitle={activeAgent?.name}
-          accessories={[{ text: `${messages.filter((m) => m.role === "user").length} messages` }]}
-          detail={conversationDetail}
-          actions={getCommonActions()}
         />
-      </List.Section>
+      )}
 
-      {/* Today's Chats */}
-      {todaySessions.length > 0 && (
-        <List.Section title="Today">
-          {todaySessions.map((session) => (
+      {/* Empty state - no conversations */}
+      {!isLoading && hasAgents && !hasConversations && (
+        <List.EmptyView
+          icon={Icon.Message}
+          title="No Conversations Yet"
+          description={`Type a message above to start chatting with ${selectedAgent?.name || "an agent"}`}
+          actions={
+            <ActionPanel>
+              <Action
+                icon={Icon.Message}
+                title="Send Message"
+                onAction={handleSubmit}
+              />
+            </ActionPanel>
+          }
+        />
+      )}
+
+      {/* Conversations list */}
+      {hasConversations && (
+        <List.Section
+          title="Conversations"
+          subtitle={`${summaries.length} conversation${summaries.length === 1 ? "" : "s"}`}
+        >
+          {summaries.map((summary) => (
             <List.Item
-              key={session.id}
-              icon={Icon.Message}
-              title={session.title}
-              subtitle={session.messages[session.messages.length - 1]?.content.slice(0, 40) + "..."}
+              key={summary.id}
+              id={summary.id}
+              icon={{ source: Icon.Message, tintColor: summary.agentColor }}
+              title={summary.title}
+              subtitle={summary.lastMessage.slice(0, 40)}
               accessories={[
-                {
-                  text: session.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                },
+                { tag: { value: summary.agentName, color: summary.agentColor } },
+                { text: `${summary.messageCount} msgs` },
+                { date: summary.updatedAt },
               ]}
               detail={
                 <List.Item.Detail
-                  markdown={session.messages
-                    .map((m) =>
-                      m.role === "user" ? `### 👤 You\n${m.content}` : `### 🤖 Agent\n${m.content}`
-                    )
-                    .join("\n\n")}
+                  markdown={buildConversationMarkdown(getConversation(summary.id) || null)}
                 />
               }
               actions={
                 <ActionPanel>
-                  <Action
-                    icon={Icon.Eye}
-                    title="View Chat"
-                    onAction={() => loadSession(session)}
-                  />
-                  <Action.Push
-                    icon={Icon.Message}
-                    title="Send Message"
-                    target={<PromptForm agentName={activeAgent?.name ?? "Agent"} onSubmit={handleSubmit} />}
-                  />
+                  <ActionPanel.Section title="Chat">
+                    <Action
+                      icon={Icon.Message}
+                      title="Send Message"
+                      onAction={handleSubmit}
+                    />
+                  </ActionPanel.Section>
+
+                  <ActionPanel.Section title="Conversation">
+                    <Action
+                      icon={Icon.Trash}
+                      title="Delete Conversation"
+                      style={Action.Style.Destructive}
+                      shortcut={{ modifiers: ["cmd"], key: "backspace" }}
+                      onAction={async () => {
+                        const confirmed = await confirmAlert({
+                          title: "Delete Conversation?",
+                          message: "This will delete the local conversation history.",
+                          primaryAction: {
+                            title: "Delete",
+                            style: Alert.ActionStyle.Destructive,
+                          },
+                        });
+                        if (confirmed) {
+                          deleteConversation(summary.id);
+                          showToast({
+                            style: Toast.Style.Success,
+                            title: "Conversation deleted",
+                          });
+                        }
+                      }}
+                    />
+                  </ActionPanel.Section>
+
+                  <ActionPanel.Section title="Agent">
+                    <Action.Push
+                      icon={Icon.Book}
+                      title="View Agent Memory"
+                      target={<MemoryCommand agentId={summary.agentId} agentName={summary.agentName} />}
+                      shortcut={{ modifiers: ["cmd"], key: "m" }}
+                    />
+                    <Action.OpenInBrowser
+                      icon={Icon.Globe}
+                      title="Open Agent in Letta"
+                      url={`https://app.letta.com/agents/${summary.agentId}`}
+                      shortcut={{ modifiers: ["cmd"], key: "o" }}
+                    />
+                  </ActionPanel.Section>
+
+                  <ActionPanel.Section>
+                    <Action
+                      icon={Icon.ArrowClockwise}
+                      title="Refresh Agents"
+                      onAction={() => revalidateAgents()}
+                      shortcut={{ modifiers: ["cmd"], key: "r" }}
+                    />
+                  </ActionPanel.Section>
                 </ActionPanel>
               }
             />
           ))}
-        </List.Section>
-      )}
-
-      {/* This Week's Chats */}
-      {thisWeekSessions.length > 0 && (
-        <List.Section title="This Week">
-          {thisWeekSessions.map((session) => (
-            <List.Item
-              key={session.id}
-              icon={Icon.Message}
-              title={session.title}
-              subtitle={session.messages[session.messages.length - 1]?.content.slice(0, 40) + "..."}
-              accessories={[
-                {
-                  text: session.timestamp.toLocaleDateString([], { weekday: "short" }),
-                },
-              ]}
-              detail={
-                <List.Item.Detail
-                  markdown={session.messages
-                    .map((m) =>
-                      m.role === "user" ? `### 👤 You\n${m.content}` : `### 🤖 Agent\n${m.content}`
-                    )
-                    .join("\n\n")}
-                />
-              }
-              actions={
-                <ActionPanel>
-                  <Action
-                    icon={Icon.Eye}
-                    title="View Chat"
-                    onAction={() => loadSession(session)}
-                  />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      )}
-
-      {/* Older Chats */}
-      {olderSessions.length > 0 && (
-        <List.Section title="Older">
-          {olderSessions.map((session) => (
-            <List.Item
-              key={session.id}
-              icon={Icon.Message}
-              title={session.title}
-              accessories={[
-                {
-                  text: session.timestamp.toLocaleDateString(),
-                },
-              ]}
-              detail={
-                <List.Item.Detail
-                  markdown={session.messages
-                    .map((m) =>
-                      m.role === "user" ? `### 👤 You\n${m.content}` : `### 🤖 Agent\n${m.content}`
-                    )
-                    .join("\n\n")}
-                />
-              }
-              actions={
-                <ActionPanel>
-                  <Action
-                    icon={Icon.Eye}
-                    title="View Chat"
-                    onAction={() => loadSession(session)}
-                  />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      )}
-
-      {/* Empty state for no previous chats */}
-      {chatSessions.length === 0 && messages.length === 0 && (
-        <List.Section title="No Previous Chats">
-          <List.Item
-            icon={Icon.Plus}
-            title="Start a new conversation"
-            subtitle="Press Enter to send your first message"
-            detail={conversationDetail}
-            actions={getCommonActions()}
-          />
         </List.Section>
       )}
     </List>
@@ -396,39 +441,22 @@ export default function ChatCommand() {
 }
 
 /**
- * Prompt input form - acts as the bottom input
+ * Extract text content from AssistantMessage content field
  */
-function PromptForm(props: { agentName: string; onSubmit: (value: string) => void }) {
-  const [value, setValue] = useState("");
-  const { pop } = useNavigation();
-
-  return (
-    <Form
-      navigationTitle={`Ask ${props.agentName}`}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            icon={Icon.Message}
-            title="Send Message"
-            shortcut={{ modifiers: [], key: "return" }}
-            onSubmit={() => {
-              if (value.trim()) {
-                props.onSubmit(value.trim());
-                pop();
-              }
-            }}
-          />
-        </ActionPanel>
+function extractAssistantContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const texts: string[] = [];
+    for (const block of content) {
+      if (typeof block === "string") {
+        texts.push(block);
+      } else if (typeof block === "object" && block !== null && "text" in block) {
+        texts.push((block as { text: string }).text);
       }
-    >
-      <Form.TextArea
-        id="prompt"
-        title="Message"
-        placeholder="Ask your Letta agent anything…"
-        value={value}
-        onChange={setValue}
-        autoFocus
-      />
-    </Form>
-  );
+    }
+    return texts.join("");
+  }
+  return "";
 }

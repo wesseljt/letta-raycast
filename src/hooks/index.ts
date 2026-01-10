@@ -5,3 +5,4 @@
 export { useLettaClient, getPreferences } from "./useLettaClient";
 export { useAgents, type AgentSummary } from "./useAgents";
 export { useChat, type ToolCall } from "./useChat";
+export { useConversations } from "./useConversations";

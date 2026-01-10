@@ -13,48 +13,15 @@
     "commands": [
         {
             "name": "chat",
-            "title": "Chat with Agent",
-            "description": "Talk to your active Letta agent",
+            "title": "Letta",
+            "description": "Chat with Letta stateful agents that remember and learn",
             "mode": "view",
             "keywords": [
                 "letta",
                 "chat",
                 "agent",
-                "ai"
-            ]
-        },
-        {
-            "name": "agents",
-            "title": "Manage Agents",
-            "description": "List, switch and create Letta agents",
-            "mode": "view",
-            "keywords": [
-                "letta",
-                "agents",
-                "manage"
-            ]
-        },
-        {
-            "name": "memory",
-            "title": "View Agent Memory",
-            "description": "Inspect an agent's memory blocks",
-            "mode": "view",
-            "keywords": [
-                "letta",
-                "memory",
-                "blocks"
-            ]
-        },
-        {
-            "name": "create-agent",
-            "title": "Create Letta Agent",
-            "description": "Create a new Letta agent from a template",
-            "mode": "view",
-            "keywords": [
-                "letta",
-                "create",
-                "new",
-                "ion"
+                "ai",
+                "memory"
             ]
         }
     ],

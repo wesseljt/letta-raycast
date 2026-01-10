@@ -22,22 +22,10 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `chat` command */
   export type Chat = ExtensionPreferences & {}
-  /** Preferences accessible in the `agents` command */
-  export type Agents = ExtensionPreferences & {}
-  /** Preferences accessible in the `memory` command */
-  export type Memory = ExtensionPreferences & {}
-  /** Preferences accessible in the `create-agent` command */
-  export type CreateAgent = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `chat` command */
   export type Chat = {}
-  /** Arguments passed to the `agents` command */
-  export type Agents = {}
-  /** Arguments passed to the `memory` command */
-  export type Memory = {}
-  /** Arguments passed to the `create-agent` command */
-  export type CreateAgent = {}
 }
 

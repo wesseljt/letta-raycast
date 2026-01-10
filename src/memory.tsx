@@ -1,13 +1,13 @@
 /**
- * View Agent Memory Command
+ * View Agent Memory Component
  *
- * Inspect the memory blocks of your active Letta agent.
- * View what the agent knows and remembers.
+ * Inspect the memory blocks of a specific Letta agent.
+ * Used as an action from the chat view.
  */
 
 import { Action, ActionPanel, Detail, Icon, List, showToast, Toast, Color } from "@raycast/api";
 import { useEffect, useState, useCallback } from "react";
-import { useLettaClient, useAgents } from "./hooks";
+import { useLettaClient } from "./hooks";
 
 type MemoryBlock = {
   id: string;
@@ -15,24 +15,27 @@ type MemoryBlock = {
   value: string;
 };
 
-export default function MemoryCommand() {
+interface MemoryCommandProps {
+  agentId: string;
+  agentName: string;
+}
+
+export default function MemoryCommand({ agentId, agentName }: MemoryCommandProps) {
   const { client } = useLettaClient();
-  const { activeAgent, isLoading: agentsLoading } = useAgents(client);
   const [blocks, setBlocks] = useState<MemoryBlock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const fetchMemory = useCallback(async () => {
-    if (!activeAgent) return;
+    if (!agentId) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Use client.agents.blocks.list() per SDK docs
-      // The SDK pattern is: client.agents.blocks.list({ agent_id })
-      const result = await client.agents.blocks.list({ agent_id: activeAgent.id });
+      // Use client.agents.blocks.list(agentId) per SDK docs
+      const result = await client.agents.blocks.list(agentId);
 
       // Handle the response - could be array or paginated
       let memoryBlocks: Array<{ id?: string; label: string; value?: string }> = [];
@@ -52,13 +55,23 @@ export default function MemoryCommand() {
         }
       }
 
-      setBlocks(
-        memoryBlocks.map((b) => ({
+      // Deduplicate blocks by ID to avoid React key conflicts
+      const seen = new Set<string>();
+      const uniqueBlocks = memoryBlocks
+        .map((b) => ({
           id: b.id || b.label,
           label: b.label,
           value: b.value || "",
         }))
-      );
+        .filter((block) => {
+          if (seen.has(block.id)) {
+            return false;
+          }
+          seen.add(block.id);
+          return true;
+        });
+
+      setBlocks(uniqueBlocks);
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : "Unknown error";
       setError(errorMessage);
@@ -70,7 +83,7 @@ export default function MemoryCommand() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeAgent?.id, client]);
+  }, [agentId, client]);
 
   useEffect(() => {
     fetchMemory();
@@ -80,24 +93,6 @@ export default function MemoryCommand() {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  // No active agent
-  if (!agentsLoading && !activeAgent) {
-    return (
-      <Detail
-        markdown={`# No Active Agent
-
-Please select an agent to view its memory.
-
-Go to **Manage Agents** to select an agent.`}
-        actions={
-          <ActionPanel>
-            <Action.Push title="Manage Agents" target={<AgentsCommand />} />
-          </ActionPanel>
-        }
-      />
-    );
-  }
-
   // Error state
   if (error) {
     return (
@@ -106,11 +101,10 @@ Go to **Manage Agents** to select an agent.`}
 
 ${error}
 
-Try refreshing or selecting a different agent.`}
+Try refreshing.`}
         actions={
           <ActionPanel>
             <Action icon={Icon.ArrowClockwise} title="Retry" onAction={handleRetry} />
-            <Action.Push title="Manage Agents" target={<AgentsCommand />} />
           </ActionPanel>
         }
       />
@@ -119,9 +113,9 @@ Try refreshing or selecting a different agent.`}
 
   return (
     <List
-      isLoading={isLoading || agentsLoading}
+      isLoading={isLoading}
       searchBarPlaceholder="Search memory blocks..."
-      navigationTitle={activeAgent ? `${activeAgent.name} - Memory` : "Agent Memory"}
+      navigationTitle={`${agentName} - Memory`}
     >
       {!isLoading && blocks.length === 0 && (
         <List.EmptyView
@@ -131,12 +125,12 @@ Try refreshing or selecting a different agent.`}
         />
       )}
 
-      {blocks.map((block) => {
+      {blocks.map((block, index) => {
         const preview = block.value.length > 100 ? block.value.slice(0, 100) + "…" : block.value;
 
         return (
           <List.Item
-            key={block.id}
+            key={`${block.id}-${index}`}
             icon={{ source: Icon.MemoryChip, tintColor: getBlockColor(block.label) }}
             title={block.label}
             subtitle={preview}
@@ -146,14 +140,7 @@ Try refreshing or selecting a different agent.`}
                 <Action.Push
                   icon={Icon.Eye}
                   title="View Block"
-                  target={
-                    <MemoryBlockDetail
-                      block={block}
-                      agentId={activeAgent?.id ?? ""}
-                      agentName={activeAgent?.name ?? "Agent"}
-                      client={client}
-                    />
-                  }
+                  target={<MemoryBlockDetail block={block} agentName={agentName} />}
                 />
                 <Action.CopyToClipboard
                   icon={Icon.Clipboard}
@@ -184,62 +171,39 @@ Try refreshing or selecting a different agent.`}
 
 /**
  * Detail view for a single memory block
- * Fetches fresh block content when opened
+ * Displays the block content that was already fetched
  */
 function MemoryBlockDetail({
   block,
-  agentId,
   agentName,
-  client,
 }: {
   block: MemoryBlock;
-  agentId: string;
   agentName: string;
-  client: ReturnType<typeof useLettaClient>["client"];
 }) {
-  const [value, setValue] = useState(block.value);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Fetch fresh block content using SDK pattern:
-    // client.agents.blocks.retrieve(label, { agent_id })
-    client.agents.blocks
-      .retrieve(block.label, { agent_id: agentId })
-      .then((res: unknown) => {
-        const blockData = res as { value?: string };
-        setValue(blockData.value ?? block.value);
-      })
-      .catch(() => {
-        // Keep the existing value on error
-      })
-      .finally(() => setIsLoading(false));
-  }, [block.label, agentId, client, block.value]);
-
   const markdown = `# ${block.label}
 
 \`\`\`
-${value}
+${block.value}
 \`\`\``;
 
   return (
     <Detail
-      isLoading={isLoading}
       navigationTitle={`${agentName} - ${block.label}`}
       markdown={markdown}
       metadata={
         <Detail.Metadata>
           <Detail.Metadata.Label title="Block Label" text={block.label} />
-          <Detail.Metadata.Label title="Character Count" text={String(value.length)} />
-          <Detail.Metadata.Label title="Word Count" text={String(value.split(/\s+/).length)} />
+          <Detail.Metadata.Label title="Character Count" text={String(block.value.length)} />
+          <Detail.Metadata.Label title="Word Count" text={String(block.value.split(/\s+/).length)} />
         </Detail.Metadata>
       }
       actions={
         <ActionPanel>
-          <Action.CopyToClipboard icon={Icon.Clipboard} title="Copy Content" content={value} />
+          <Action.CopyToClipboard icon={Icon.Clipboard} title="Copy Content" content={block.value} />
           <Action.CopyToClipboard
             icon={Icon.Clipboard}
             title="Copy as Markdown"
-            content={`## ${block.label}\n\n${value}`}
+            content={`## ${block.label}\n\n${block.value}`}
           />
         </ActionPanel>
       }
@@ -261,5 +225,3 @@ function getBlockColor(label: string): Color {
   return colors[label.toLowerCase()] ?? Color.SecondaryText;
 }
 
-// Import for navigation
-import AgentsCommand from "./agents";

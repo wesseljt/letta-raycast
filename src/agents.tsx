@@ -117,7 +117,8 @@ export default function AgentsCommand() {
 }
 
 /**
- * Quick chat view when selecting an agent
+ * Quick chat view when selecting an agent - opens the unified chat
+ * with this agent pre-selected
  */
 function ChatWithAgent({ agentId, agentName }: { agentId: string; agentName: string }) {
   const { client } = useLettaClient();
@@ -128,5 +129,6 @@ function ChatWithAgent({ agentId, agentName }: { agentId: string; agentName: str
     setActiveAgentId(agentId);
   }, [agentId, setActiveAgentId]);
 
+  // The ChatCommand will pick up the active agent from storage
   return <ChatCommand />;
 }
