@@ -56,69 +56,90 @@ export function useChat(client: Letta, agentId?: string | null) {
         const finalTools: ToolCall[] = [];
 
         try {
-          // Attempt streaming API - try both possible signatures
+          // Use createStream API for streaming responses
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const messagesApi = client.agents.messages as any;
+          
+          // Try createStream first (newer SDK), then stream (older SDK)
           let stream: AsyncIterable<unknown>;
-          try {
-            stream = await client.agents.messages.stream(agentId, {
-              input: input,
+          if (typeof messagesApi.createStream === "function") {
+            stream = await messagesApi.createStream(agentId, {
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: input }],
+                },
+              ],
+              streamTokens: true,
+              streamSteps: true,
+            });
+          } else if (typeof messagesApi.stream === "function") {
+            stream = await messagesApi.stream(agentId, {
+              messages: [
+                {
+                  role: "user", 
+                  content: [{ type: "text", text: input }],
+                },
+              ],
               stream_tokens: true,
-            } as unknown as Parameters<typeof client.agents.messages.stream>[1]);
-          } catch {
-            // Try alternative signature with messages array
-            stream = await client.agents.messages.stream(agentId, {
-              messages: [{ role: "user", content: input }],
-              stream_tokens: true,
-            } as unknown as Parameters<typeof client.agents.messages.stream>[1]);
+            });
+          } else {
+            throw new Error("No streaming method available");
           }
 
-          const assistantParts: string[] = [];
+          let answerText = "";
           const reasoningParts: string[] = [];
           const tools: ToolCall[] = [];
 
           // Process streaming events
-          for await (const event of stream) {
-            const eventData = event as Record<string, unknown>;
-            const eventType = eventData.event_type as string | undefined;
-            const messageType = eventData.message_type as string | undefined;
+          for await (const chunk of stream) {
+            const chunkData = chunk as Record<string, unknown>;
+            const chunkType = chunkData.type as string | undefined;
+            const messageType = chunkData.message_type as string | undefined;
 
-            if (eventType === "assistant_message" || messageType === "assistant_message") {
-              // Handle different content formats
-              const content = eventData.content;
-              if (typeof content === "string") {
-                assistantParts.push(content);
-                setCurrentAnswer(assistantParts.join(""));
+            // Handle message_chunk (streaming tokens)
+            if (chunkType === "message_chunk") {
+              const delta = chunkData.delta as string;
+              if (delta) {
+                answerText += delta;
+                setCurrentAnswer(answerText);
+              }
+            }
+            // Handle assistant_message (full or partial message)
+            else if (chunkType === "assistant_message" || messageType === "assistant_message") {
+              const content = chunkData.content;
+              const delta = chunkData.delta as string | undefined;
+              
+              if (delta) {
+                answerText += delta;
+                setCurrentAnswer(answerText);
+              } else if (typeof content === "string") {
+                answerText = content;
+                setCurrentAnswer(answerText);
               } else if (Array.isArray(content)) {
                 for (const block of content) {
-                  if (typeof block === "object" && block !== null) {
-                    if ("text" in block && typeof block.text === "string") {
-                      assistantParts.push(block.text);
-                      setCurrentAnswer(assistantParts.join(""));
-                    } else if (typeof block === "string") {
-                      assistantParts.push(block);
-                      setCurrentAnswer(assistantParts.join(""));
-                    }
+                  if (typeof block === "object" && block !== null && "text" in block) {
+                    answerText = (block as { text: string }).text;
+                    setCurrentAnswer(answerText);
                   }
                 }
-              } else if (eventData.text && typeof eventData.text === "string") {
-                assistantParts.push(eventData.text);
-                setCurrentAnswer(assistantParts.join(""));
-              } else if (eventData.delta && typeof eventData.delta === "string") {
-                // Handle delta updates
-                assistantParts.push(eventData.delta);
-                setCurrentAnswer(assistantParts.join(""));
               }
-            } else if (eventType === "reasoning_message" || messageType === "reasoning_message") {
+            }
+            // Handle reasoning_message
+            else if (chunkType === "reasoning_message" || messageType === "reasoning_message") {
               const reasoningContent =
-                (eventData.reasoning as string) ||
-                (eventData.content as string) ||
-                (eventData.text as string) ||
+                (chunkData.reasoning as string) ||
+                (chunkData.content as string) ||
+                (chunkData.delta as string) ||
                 "";
               if (reasoningContent) {
                 reasoningParts.push(reasoningContent);
                 setCurrentReasoning(reasoningParts.join("\n\n"));
               }
-            } else if (eventType === "tool_call_message" || messageType === "tool_call_message") {
-              const toolCall = eventData.tool_call as
+            }
+            // Handle tool_call_message
+            else if (chunkType === "tool_call_message" || messageType === "tool_call_message") {
+              const toolCall = chunkData.tool_call as
                 | { name: string; arguments?: Record<string, unknown> }
                 | undefined;
               if (toolCall) {
@@ -129,9 +150,13 @@ export function useChat(client: Letta, agentId?: string | null) {
                 setToolCalls([...tools]);
               }
             }
+            // Handle step_complete
+            else if (chunkType === "step_complete") {
+              // Step completed, could log or track progress
+            }
           }
 
-          finalAnswer = assistantParts.join("") || currentAnswer;
+          finalAnswer = answerText || currentAnswer;
           finalReasoning = reasoningParts.join("\n\n");
           finalTools.push(...tools);
         } catch (streamError) {
