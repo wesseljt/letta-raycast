@@ -26,8 +26,34 @@ export function useAgents(client: Letta) {
   } = useCachedPromise(
     async () => {
       const result = await client.agents.list();
-      // Map to a lean view - adjust based on actual SDK response shape
-      return (result as unknown as { id: string; name: string; description?: string | null }[]).map((a) => ({
+
+      // Handle different response shapes from SDK
+      let agentsList: Array<{ id: string; name: string; description?: string | null }> = [];
+
+      if (Array.isArray(result)) {
+        // Direct array response
+        agentsList = result;
+      } else if (result && typeof result === "object") {
+        const resultObj = result as Record<string, unknown>;
+
+        // Check for paginated response with .data property
+        if (Array.isArray(resultObj.data)) {
+          agentsList = resultObj.data;
+        }
+        // Check for async iterable (for await...of)
+        else if (Symbol.asyncIterator in result) {
+          for await (const agent of result as AsyncIterable<{
+            id: string;
+            name: string;
+            description?: string | null;
+          }>) {
+            agentsList.push(agent);
+          }
+        }
+      }
+
+      // Map to a lean view
+      return agentsList.map((a) => ({
         id: a.id,
         name: a.name,
         description: a.description,

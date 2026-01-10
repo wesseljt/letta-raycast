@@ -8,12 +8,16 @@
 import { Action, ActionPanel, Detail, Form, showToast, Toast, useNavigation } from "@raycast/api";
 import { useState, useEffect } from "react";
 import { useLettaClient, useAgents, useChat } from "./hooks";
+// Note: These imports create a circular dependency with agents.tsx
+// This is handled okay by the JS module system but could be refactored
+import AgentsCommand from "./agents";
+import CreateAgentCommand from "./create-agent";
+import MemoryCommand from "./memory";
 
 export default function ChatCommand() {
   const { client, showReasoning } = useLettaClient();
   const { activeAgent, agents, isLoading: agentsLoading } = useAgents(client);
   const { isLoading, answer, reasoning, toolCalls, error, send } = useChat(client, activeAgent?.id);
-  const { push } = useNavigation();
 
   // Show warning if no active agent but agents exist
   useEffect(() => {
@@ -152,8 +156,3 @@ function PromptForm(props: { agentName: string; onSubmit: (value: string) => voi
     </Form>
   );
 }
-
-// Lazy imports to avoid circular dependencies
-import AgentsCommand from "./agents";
-import CreateAgentCommand from "./create-agent";
-import MemoryCommand from "./memory";

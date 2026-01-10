@@ -30,9 +30,28 @@ export default function MemoryCommand() {
     setError(null);
 
     try {
-      const res = await client.agents.coreMemory.retrieve(activeAgent.id);
-      // Parse the response - adjust based on actual SDK shape
-      const memoryBlocks = (res as { blocks?: { id: string; label: string; value: string }[] }).blocks ?? [];
+      // Use client.agents.blocks.list() per SDK docs
+      // The SDK pattern is: client.agents.blocks.list({ agent_id })
+      const result = await client.agents.blocks.list({ agent_id: activeAgent.id });
+
+      // Handle the response - could be array or paginated
+      let memoryBlocks: Array<{ id?: string; label: string; value?: string }> = [];
+
+      if (Array.isArray(result)) {
+        memoryBlocks = result;
+      } else if (result && typeof result === "object") {
+        // Could be paginated or have a data property
+        const resultObj = result as Record<string, unknown>;
+        if (Array.isArray(resultObj.data)) {
+          memoryBlocks = resultObj.data;
+        } else if (Symbol.asyncIterator in result) {
+          // Handle async iterable
+          for await (const block of result as AsyncIterable<{ id?: string; label: string; value?: string }>) {
+            memoryBlocks.push(block);
+          }
+        }
+      }
+
       setBlocks(
         memoryBlocks.map((b) => ({
           id: b.id || b.label,
@@ -127,7 +146,14 @@ Try refreshing or selecting a different agent.`}
                 <Action.Push
                   icon={Icon.Eye}
                   title="View Block"
-                  target={<MemoryBlockDetail block={block} agentName={activeAgent?.name ?? "Agent"} />}
+                  target={
+                    <MemoryBlockDetail
+                      block={block}
+                      agentId={activeAgent?.id ?? ""}
+                      agentName={activeAgent?.name ?? "Agent"}
+                      client={client}
+                    />
+                  }
                 />
                 <Action.CopyToClipboard
                   icon={Icon.Clipboard}
@@ -158,32 +184,62 @@ Try refreshing or selecting a different agent.`}
 
 /**
  * Detail view for a single memory block
+ * Fetches fresh block content when opened
  */
-function MemoryBlockDetail({ block, agentName }: { block: MemoryBlock; agentName: string }) {
+function MemoryBlockDetail({
+  block,
+  agentId,
+  agentName,
+  client,
+}: {
+  block: MemoryBlock;
+  agentId: string;
+  agentName: string;
+  client: ReturnType<typeof useLettaClient>["client"];
+}) {
+  const [value, setValue] = useState(block.value);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch fresh block content using SDK pattern:
+    // client.agents.blocks.retrieve(label, { agent_id })
+    client.agents.blocks
+      .retrieve(block.label, { agent_id: agentId })
+      .then((res: unknown) => {
+        const blockData = res as { value?: string };
+        setValue(blockData.value ?? block.value);
+      })
+      .catch(() => {
+        // Keep the existing value on error
+      })
+      .finally(() => setIsLoading(false));
+  }, [block.label, agentId, client, block.value]);
+
   const markdown = `# ${block.label}
 
 \`\`\`
-${block.value}
+${value}
 \`\`\``;
 
   return (
     <Detail
+      isLoading={isLoading}
       navigationTitle={`${agentName} - ${block.label}`}
       markdown={markdown}
       metadata={
         <Detail.Metadata>
           <Detail.Metadata.Label title="Block Label" text={block.label} />
-          <Detail.Metadata.Label title="Character Count" text={String(block.value.length)} />
-          <Detail.Metadata.Label title="Word Count" text={String(block.value.split(/\s+/).length)} />
+          <Detail.Metadata.Label title="Character Count" text={String(value.length)} />
+          <Detail.Metadata.Label title="Word Count" text={String(value.split(/\s+/).length)} />
         </Detail.Metadata>
       }
       actions={
         <ActionPanel>
-          <Action.CopyToClipboard icon={Icon.Clipboard} title="Copy Content" content={block.value} />
+          <Action.CopyToClipboard icon={Icon.Clipboard} title="Copy Content" content={value} />
           <Action.CopyToClipboard
             icon={Icon.Clipboard}
             title="Copy as Markdown"
-            content={`## ${block.label}\n\n${block.value}`}
+            content={`## ${block.label}\n\n${value}`}
           />
         </ActionPanel>
       }

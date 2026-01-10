@@ -86,7 +86,7 @@
     "dependencies": {
         "@letta-ai/letta-client": "^1.6.5",
         "@raycast/api": "^1.103.0",
-        "@raycast/utils": "^1.20.0"
+        "@raycast/utils": "^1.19.1"
     },
     "devDependencies": {
         "@raycast/eslint-config": "^1.0.11",
