@@ -185,8 +185,8 @@ export default function ChatCommand() {
           }
         }
 
-        // Update final message
-        updateLastMessage(conversation!.id, finalAnswer, finalReasoning);
+        // Update final message and save to storage
+        updateLastMessage(conversation!.id, finalAnswer, finalReasoning, true);
 
         showToast({
           style: Toast.Style.Success,

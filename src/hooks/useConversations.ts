@@ -36,8 +36,13 @@ interface UseConversationsReturn {
   startConversation: (agent: AgentWithAccount) => Conversation;
   /** Add a message to a conversation */
   addMessage: (conversationId: string, message: Omit<Message, "id">) => void;
-  /** Update the last message (for streaming) */
-  updateLastMessage: (conversationId: string, content: string, reasoning?: string) => void;
+  /** Update the last message (for streaming). Set shouldSave=true when complete. */
+  updateLastMessage: (
+    conversationId: string,
+    content: string,
+    reasoning?: string,
+    shouldSave?: boolean
+  ) => void;
   /** Set the active conversation */
   setActiveConversation: (conversationId: string | null) => void;
   /** Delete a conversation */
@@ -169,33 +174,40 @@ export function useConversations(_agents: AgentWithAccount[] = []): UseConversat
   );
 
   // Update the last message (for streaming responses)
-  const updateLastMessage = useCallback((conversationId: string, content: string, reasoning?: string) => {
-    setConversations((prev) => {
-      const updated = prev.map((conv) => {
-        if (conv.id !== conversationId) return conv;
-        if (conv.messages.length === 0) return conv;
+  // Set shouldSave=true when streaming is complete to persist the final response
+  const updateLastMessage = useCallback(
+    (conversationId: string, content: string, reasoning?: string, shouldSave = false) => {
+      setConversations((prev) => {
+        const updated = prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
+          if (conv.messages.length === 0) return conv;
 
-        const messages = [...conv.messages];
-        const lastMessage = messages[messages.length - 1];
+          const messages = [...conv.messages];
+          const lastMessage = messages[messages.length - 1];
 
-        if (lastMessage.role === "assistant") {
-          messages[messages.length - 1] = {
-            ...lastMessage,
-            content,
-            reasoning,
+          if (lastMessage.role === "assistant") {
+            messages[messages.length - 1] = {
+              ...lastMessage,
+              content,
+              reasoning,
+            };
+          }
+
+          return {
+            ...conv,
+            messages,
+            updatedAt: new Date(),
           };
+        });
+        // Save when streaming is complete
+        if (shouldSave) {
+          save(updated);
         }
-
-        return {
-          ...conv,
-          messages,
-          updatedAt: new Date(),
-        };
+        return updated;
       });
-      // Don't save during streaming - only on complete
-      return updated;
-    });
-  }, []);
+    },
+    [save]
+  );
 
   // Set active conversation
   const setActiveConversation = useCallback((conversationId: string | null) => {
