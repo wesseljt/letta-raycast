@@ -38,7 +38,6 @@ interface MultiAccountPreferences {
 function parseAccounts(prefs: MultiAccountPreferences): LettaAccount[] {
   const accounts: LettaAccount[] = [];
 
-  // Project 1 is required
   if (prefs.project1ApiKey) {
     accounts.push({
       id: "project1",
@@ -48,7 +47,6 @@ function parseAccounts(prefs: MultiAccountPreferences): LettaAccount[] {
     });
   }
 
-  // Projects 2-5 are optional
   const optionalProjects = [
     {
       id: "project2",
@@ -77,7 +75,6 @@ function parseAccounts(prefs: MultiAccountPreferences): LettaAccount[] {
   ];
 
   for (const proj of optionalProjects) {
-    // Only add if both name and API key are provided
     if (proj.name && proj.apiKey) {
       accounts.push({
         id: proj.id,
@@ -91,7 +88,6 @@ function parseAccounts(prefs: MultiAccountPreferences): LettaAccount[] {
   return accounts;
 }
 
-// Cache for created clients (module-level to persist across renders)
 const clientCache = new Map<string, Letta>();
 
 /**
@@ -118,7 +114,6 @@ function getOrCreateClient(account: LettaAccount): Letta {
 export function useAccounts() {
   const prefs = getPreferenceValues<MultiAccountPreferences>();
 
-  // Parse accounts from preferences
   const accounts = useMemo(
     () => parseAccounts(prefs),
     [
@@ -140,7 +135,6 @@ export function useAccounts() {
     ]
   );
 
-  // Get client for a specific account (creates lazily)
   const getClientForAccount = useCallback(
     (accountId: string): Letta | undefined => {
       const account = accounts.find((a) => a.id === accountId);
@@ -150,22 +144,15 @@ export function useAccounts() {
     [accounts]
   );
 
-  // Get the showReasoning preference
   const showReasoning = prefs.showReasoning ?? true;
 
   return {
-    /** All configured accounts */
     accounts,
-    /** Get client for a specific account ID (creates lazily) */
     getClientForAccount,
-    /** Whether to show reasoning in chat */
     showReasoning,
   };
 }
 
-/**
- * Get accounts without React hooks (for use in callbacks)
- */
 export function getAccounts(): LettaAccount[] {
   const prefs = getPreferenceValues<MultiAccountPreferences>();
   return parseAccounts(prefs);

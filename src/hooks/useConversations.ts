@@ -36,7 +36,6 @@ interface UseConversationsReturn {
   startConversation: (agent: AgentWithAccount) => Conversation;
   /** Add a message to a conversation */
   addMessage: (conversationId: string, message: Omit<Message, "id">) => void;
-  /** Update the last message (for streaming). Set shouldSave=true when complete. */
   updateLastMessage: (
     conversationId: string,
     content: string,
@@ -53,8 +52,7 @@ interface UseConversationsReturn {
   getConversation: (conversationId: string) => Conversation | undefined;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function useConversations(_agents: AgentWithAccount[] = []): UseConversationsReturn {
+export function useConversations(): UseConversationsReturn {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -173,8 +171,6 @@ export function useConversations(_agents: AgentWithAccount[] = []): UseConversat
     [save]
   );
 
-  // Update the last message (for streaming responses)
-  // Set shouldSave=true when streaming is complete to persist the final response
   const updateLastMessage = useCallback(
     (conversationId: string, content: string, reasoning?: string, shouldSave = false) => {
       setConversations((prev) => {
@@ -199,7 +195,6 @@ export function useConversations(_agents: AgentWithAccount[] = []): UseConversat
             updatedAt: new Date(),
           };
         });
-        // Save when streaming is complete
         if (shouldSave) {
           save(updated);
         }

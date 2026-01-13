@@ -40,7 +40,7 @@ export default function ChatCommand() {
     setActiveConversation,
     deleteConversation,
     getConversation,
-  } = useConversations(agentsWithColors);
+  } = useConversations();
 
   // Chat state
   const [searchText, setSearchText] = useState("");
@@ -185,7 +185,6 @@ export default function ChatCommand() {
           }
         }
 
-        // Update final message and save to storage
         updateLastMessage(conversation!.id, finalAnswer, finalReasoning, true);
 
         showToast({

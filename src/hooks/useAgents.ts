@@ -59,8 +59,7 @@ async function fetchAgentsForAccount(client: Letta, account: LettaAccount): Prom
       accountId: account.id,
       accountName: account.name,
     }));
-  } catch (error) {
-    // Silent failure - return empty array for this account
+  } catch {
     return [];
   }
 }

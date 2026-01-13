@@ -58,7 +58,6 @@ export default function MemoryCommand({ agentId, agentName, accountId = "project
         }
       }
 
-      // Deduplicate blocks by ID to avoid React key conflicts
       const seen = new Set<string>();
       const uniqueBlocks = memoryBlocks
         .map((b) => ({

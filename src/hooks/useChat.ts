@@ -108,11 +108,8 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const messagesApi = client.agents.messages as any;
 
-          // Get the stream - use step streaming (complete messages per step)
-          // This is simpler and doesn't require accumulation
           let stream: AsyncIterable<unknown> | null = null;
 
-          // Try SDK methods
           if (typeof messagesApi.createStream === "function") {
             stream = await messagesApi.createStream(agentId, {
               input: userInput,
@@ -129,12 +126,10 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
             throw new Error("No streaming method available in SDK");
           }
 
-          // Track content by message ID for accumulation (in case server sends partial)
           const contentByMessageId = new Map<string, string>();
           const reasoningParts: string[] = [];
           const tools: ToolCall[] = [];
 
-          // Process streaming events
           for await (const chunk of stream) {
             const event = chunk as Record<string, unknown>;
             const messageType = event.message_type as string | undefined;
@@ -144,18 +139,13 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
               case "assistant_message": {
                 const content = extractAssistantContent(event.content);
                 if (content && messageId) {
-                  // Accumulate by message ID
                   const existing = contentByMessageId.get(messageId) || "";
-                  // If new content is longer or different, it might be the full message
-                  // With step streaming, each event should be complete
                   if (content.length > existing.length) {
                     contentByMessageId.set(messageId, content);
                   }
-                  // Build full answer from all message parts
                   finalAnswer = Array.from(contentByMessageId.values()).join("");
                   setCurrentAnswer(finalAnswer);
                 } else if (content) {
-                  // No message ID - just use the content directly
                   finalAnswer = content;
                   setCurrentAnswer(finalAnswer);
                 }
@@ -206,7 +196,6 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
               }
 
               case "tool_return_message": {
-                // Tool execution complete - could show result if needed
                 break;
               }
 
@@ -226,18 +215,16 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
 
               case "ping":
               case "usage_statistics": {
-                // Ignore keepalive and stats
                 break;
               }
             }
           }
 
           streamingWorked = true;
-        } catch (streamError) {
-          console.log("Streaming failed, falling back to non-streaming:", streamError);
+        } catch {
+          // Fallback to non-streaming
         }
 
-        // Fallback to non-streaming API
         if (!streamingWorked) {
           const response = await client.agents.messages.create(agentId, {
             input: userInput,
@@ -287,7 +274,6 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
           finalTools.push(...tools);
         }
 
-        // Add assistant response to history when complete
         if (finalAnswer) {
           const assistantMessage: ChatMessage = {
             role: "assistant",
