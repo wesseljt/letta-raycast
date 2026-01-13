@@ -269,10 +269,6 @@ export default function ChatCommand() {
         lines.push("---\n");
       }
 
-      if (isStreaming) {
-        lines.push("\n*Thinking...*");
-      }
-
       return lines.join("\n");
     },
     [selectedAgent, showReasoning, isStreaming, streamingContent]
@@ -375,13 +371,8 @@ export default function ChatCommand() {
               id={summary.id}
               icon={{ source: Icon.Message, tintColor: summary.agentColor }}
               title={summary.title}
-              subtitle={summary.lastMessage.slice(0, 40)}
-              accessories={[
-                { tag: { value: summary.accountName, color: summary.agentColor } },
-                { tag: { value: summary.agentName, color: summary.agentColor } },
-                { text: `${summary.messageCount} msgs` },
-                { date: summary.updatedAt },
-              ]}
+              subtitle={summary.lastMessage}
+              accessories={[{ tag: { value: summary.accountName, color: summary.agentColor } }]}
               detail={
                 <List.Item.Detail markdown={buildConversationMarkdown(getConversation(summary.id) || null)} />
               }
