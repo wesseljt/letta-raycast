@@ -111,7 +111,7 @@ export default function AgentsCommand() {
                       <ActionPanel.Section>
                         <Action.OpenInBrowser
                           icon={Icon.Globe}
-                          title="Open in Letta ADE"
+                          title="Open In Letta ADE"
                           url={`https://app.letta.com/agents/${agent.id}`}
                         />
                         <Action.CopyToClipboard
