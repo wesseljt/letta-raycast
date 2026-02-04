@@ -188,9 +188,7 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
                     toolCallId: toolCall.tool_call_id,
                   });
                   setToolCalls([...tools]);
-                  finalTools.push(
-                    ...tools.filter((t) => !finalTools.some((ft) => ft.toolCallId === t.toolCallId))
-                  );
+                  finalTools.push(...tools.filter((t) => !finalTools.some((ft) => ft.toolCallId === t.toolCallId)));
                 }
                 break;
               }
@@ -232,7 +230,7 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
 
           const responseMessages: Record<string, unknown>[] = Array.isArray(response)
             ? response
-            : (((response as Record<string, unknown>).messages as Record<string, unknown>[]) ?? []);
+            : (((response as unknown as Record<string, unknown>).messages as Record<string, unknown>[]) ?? []);
 
           const assistantParts: string[] = [];
           const reasoningParts: string[] = [];
@@ -308,8 +306,7 @@ export function useChat(client: Letta, agentId?: string | null, initialMessages?
     setError(null);
   }, []);
 
-  const answer =
-    currentAnswer || messages.filter((m) => m.role === "assistant").slice(-1)[0]?.content || null;
+  const answer = currentAnswer || messages.filter((m) => m.role === "assistant").slice(-1)[0]?.content || null;
   const reasoning = currentReasoning || null;
 
   return {
