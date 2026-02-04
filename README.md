@@ -8,7 +8,7 @@ Chat with your stateful AI agents that remember and learn over time — directly
 
 **Chat with your Letta agent**
 
-![Chat Interface](assets/screenshots/chat-interface.png?v=4)
+![Chat Interface](assets/screenshots/chat-interface.png?v=5)
 
 ## Features
 
