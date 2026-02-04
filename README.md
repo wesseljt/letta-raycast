@@ -4,11 +4,11 @@ Chat with your stateful AI agents that remember and learn over time — directly
 
 **Search for Letta in Raycast**
 
-![Raycast Search](assets/screenshots/raycast-search.png)
+![Raycast Search](assets/screenshots/raycast-search.png?v=2)
 
 **Chat with your Letta agent**
 
-![Chat Interface](assets/screenshots/chat-interface.png)
+![Chat Interface](assets/screenshots/chat-interface.png?v=2)
 
 ## Features
 
