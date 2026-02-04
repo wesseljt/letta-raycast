@@ -3,10 +3,12 @@
 Chat with your stateful AI agents that remember and learn over time — directly from Raycast.
 
 **Chat with your Letta agent**
-![Chat Interface](assets/screenshots/chat-interface.png)
+
+<img src="assets/screenshots/chat-interface.png" alt="Chat Interface" width="747">
 
 **Search for Letta in Raycast**
-![Raycast Search](assets/screenshots/raycast-search.png)
+
+<img src="assets/screenshots/raycast-search.png" alt="Raycast Search" width="746">
 
 ## Features
 
