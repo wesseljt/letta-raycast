@@ -2,6 +2,9 @@
 
 Chat with your stateful AI agents that remember and learn over time — directly from Raycast.
 
+![Chat Interface](assets/screenshots/chat-interface.png)
+![Raycast Search](assets/screenshots/raycast-search.png)
+
 ## Features
 
 - **🧠 Chat with Agent**: Talk to Letta agents that remember context across conversations
