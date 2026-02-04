@@ -4,10 +4,9 @@ Chat with your stateful AI agents that remember and learn over time — directly
 
 ## Features
 
-- **🧠 Chat with Memory**: Talk to Letta agents that remember context across conversations
-- **👥 Manage Agents**: List, switch, and create agents with different personalities
+- **🧠 Chat with Agent**: Talk to Letta agents that remember context across conversations
+- **👥 Manage Agents**: List and switch between your agents
 - **📝 View Memory**: Inspect what your agent knows and remembers about you
-- **⚡ Templates**: Quick-start with Ion (enhanced memory), Coder, or Default templates
 
 ## Commands
 
@@ -16,7 +15,6 @@ Chat with your stateful AI agents that remember and learn over time — directly
 | **Chat with Agent** | Send messages to your active Letta agent |
 | **Manage Agents** | List, select, and manage your agents |
 | **View Agent Memory** | Inspect memory blocks of the active agent |
-| **Create Letta Agent** | Create a new agent from a template |
 
 ## Setup
 
@@ -33,17 +31,6 @@ Chat with your stateful AI agents that remember and learn over time — directly
 | **API Key** | Your Letta API key | Yes |
 | **Base URL** | Custom Letta API URL for self-hosted | No |
 | **Show Reasoning** | Display agent's internal thoughts | No |
-
-## Agent Templates
-
-### Ion (Enhanced Memory)
-Personal assistant with enhanced memory and learning capabilities. Maintains working context and evolving understanding.
-
-### Default Assistant
-A basic conversational agent with standard memory blocks (persona + human).
-
-### Coding Assistant
-Specialized for software development with tech context tracking.
 
 ## Development
 
@@ -72,8 +59,7 @@ src/
 │   └── index.ts            # Barrel exports
 ├── chat.tsx                # Chat command
 ├── agents.tsx              # Agent management command
-├── memory.tsx              # Memory inspection command
-└── create-agent.tsx        # Agent creation form
+└── memory.tsx              # Memory inspection command
 ```
 
 ## Links
